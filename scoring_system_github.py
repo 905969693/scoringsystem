@@ -130,7 +130,7 @@ st.title("📊 Stock Scoring System")
 st.caption("0 = 极端超卖，100 = 极端超买 | 手机端可直接访问")
 today = date.today()
 # 输入框
-symbol = st.text_input("请输入股票代码（如 0700.HK, AAPL, 600519.SS）", value="0700.HK")
+symbol = st.text_input("请输入股票代码（如 0700.HK, AAPL, 600519.SS）", value="QQQ")
 end_date = st.date_input("截止日期", value=pd.to_datetime(today))
 months_back = st.slider("回溯月数", min_value=1, max_value=12, value=6)
 
