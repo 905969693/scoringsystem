@@ -94,7 +94,7 @@ def analyze_single_stock(symbol, start, end):
         df['obos_score'] = calculate_obos_score(df)
         td_signal = check_td_nine(df)
         
-        latest = df.iloc[-1]
+        latest = df.iloc[-1].item()
         return {
             'symbol': symbol,
             'price': latest['Close'],
