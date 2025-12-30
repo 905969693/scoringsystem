@@ -150,8 +150,8 @@ if st.button("📊 计算评分"):
                 st.metric("当前超买超卖分", f"{latest_score:.1f} / 100")
                 st.progress(int(latest_score))
 
-                # 显示最近5天趋势
-                st.line_chart(df['obos_score'].dropna().tail(20))
+                # 显示最近60天趋势
+                st.line_chart(df['obos_score'].dropna().tail(60))
 
                 # 可选：显示原始数据
                 with st.expander("📈 查看原始指标数据"):
