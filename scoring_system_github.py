@@ -4,6 +4,8 @@ import yfinance as yf
 import talib
 import numpy as np
 import pandas as pd
+from datetime import date
+
 
 # ========== 你的函数（保持不变）==========
 def fetch_stock_data(symbol, start, end):
@@ -124,12 +126,12 @@ def calculate_obos_score(df, weights=None):
 
 # ========== Streamlit 界面 ==========
 st.set_page_config(page_title="量化超买超卖评分", layout="centered")
-st.title("📊 股票超买超卖评分系统")
+st.title("📊 Stock Scoring System")
 st.caption("0 = 极端超卖，100 = 极端超买 | 手机端可直接访问")
-
+today = date.today()
 # 输入框
 symbol = st.text_input("请输入股票代码（如 0700.HK, AAPL, 600519.SS）", value="0700.HK")
-end_date = st.date_input("截止日期", value=pd.to_datetime("2025-12-29"))
+end_date = st.date_input("截止日期", value=pd.to_datetime(today))
 months_back = st.slider("回溯月数", min_value=1, max_value=12, value=6)
 
 if st.button("📊 计算评分"):
