@@ -119,10 +119,20 @@ st.caption("0 = 极端超卖，100 = 极端超买 | 支持 TD 9 信号 | 手机�
 
 # 输入区域
 col1, col2 = st.columns([3, 1])
+ticker_list = ['PDD',
+ 'NVDA',
+ 'QQQ',
+ 'TLT',
+ 'RSP',
+ 'GLD',
+ 'SLV',
+ 'USO',
+ 'KBE',
+ 'IBIT']
 with col1:
     symbols_input = st.text_input(
         "输入股票代码（英文逗号分隔）",
-        value="QQQ, 0700.HK, AAPL",
+        value= ticker_list,
         help="示例: QQQ, 0700.HK, 600519.SS"
     )
 with col2:
