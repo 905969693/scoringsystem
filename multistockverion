@@ -1,0 +1,202 @@
+# app.py
+import streamlit as st
+import yfinance as yf
+import talib
+import numpy as np
+import pandas as pd
+from datetime import date
+
+# ========== 保持你原有的函数不变 ==========
+def fetch_stock_data(symbol, start, end):
+    data = yf.download(symbol, start=start, end=end, auto_adjust=True, progress=False)
+    return data
+
+def check_td_nine(df):
+    close = pd.Series(df['Close'].values.flatten())
+    if not isinstance(close, pd.Series):
+        raise TypeError("Input 'close' must be a pandas Series.")
+    close_clean = close.dropna()
+    if len(close_clean) < 9:
+        return {'buy': False, 'sell': False, 'buy_count': 0, 'sell_count': 0}
+    
+    n = len(close_clean)
+    buy_seq = [0] * n
+    sell_seq = [0] * n
+
+    for i in range(4, n):
+        current = close_clean.iloc[i]
+        ref = close_clean.iloc[i - 4]
+        if current < ref:
+            buy_seq[i] = min(buy_seq[i - 1] + 1, 9)
+        if current > ref:
+            sell_seq[i] = min(sell_seq[i - 1] + 1, 9)
+    
+    return {
+        'buy': buy_seq[-1] >= 9,
+        'sell': sell_seq[-1] >= 9,
+        'buy_count': buy_seq[-1],
+        'sell_count': sell_seq[-1]
+    }
+
+def calculate_indicators(df):
+    close = df['Close'].values.flatten()
+    high = df['High'].values.flatten()
+    low = df['Low'].values.flatten()
+
+    df['rsi'] = talib.RSI(close, timeperiod=14)
+    
+    df['k'], df['d'] = talib.STOCH(
+        high, low, close,
+        fastk_period=9,
+        slowk_period=3,
+        slowk_matype=0,
+        slowd_period=3,
+        slowd_matype=0
+    )
+    df['j'] = 3 * df['k'] - 2 * df['d']
+    
+    upper, middle, lower = talib.BBANDS(
+        close,
+        timeperiod=20,
+        nbdevup=2,
+        nbdevdn=2,
+        matype=0
+    )
+    df['bb_upper'] = upper
+    df['bb_middle'] = middle
+    df['bb_lower'] = lower
+    df['bb_position'] = 100 * (close - lower) / (upper - lower + 1e-8)
+    df['bb_position'] = np.clip(df['bb_position'], 0, 100)
+    return df
+
+def calculate_obos_score(df, weights=None):
+    if weights is None:
+        weights = {'rsi': 0.4, 'kdj': 0.3, 'bb': 0.3}
+    kdj_score = np.clip(df['j'], 0, 100)
+    rsi_score = df['rsi']
+    bb_score = df['bb_position']
+    score = (
+        weights['rsi'] * rsi_score +
+        weights['kdj'] * kdj_score +
+        weights['bb'] * bb_score
+    ) / sum(weights.values())
+    return np.clip(score, 0, 100)
+
+# ========== 多股票分析函数 ==========
+def analyze_single_stock(symbol, start, end):
+    """分析单只股票，返回结果字典"""
+    try:
+        df = fetch_stock_data(symbol, start=start, end=end)
+        if df.empty:
+            return None
+        
+        df = calculate_indicators(df)
+        df['obos_score'] = calculate_obos_score(df)
+        td_signal = check_td_nine(df)
+        
+        latest = df.iloc[-1]
+        return {
+            'symbol': symbol,
+            'price': latest['Close'],
+            'rsi': latest['rsi'],
+            'j': latest['j'],
+            'bb_position': latest['bb_position'],
+            'score': latest['obos_score'],
+            'td_buy': td_signal['buy'],
+            'td_sell': td_signal['sell'],
+            'td_buy_count': td_signal['buy_count'],
+            'td_sell_count': td_signal['sell_count'],
+            'history': df[['Close', 'obos_score']].copy()
+        }
+    except Exception as e:
+        st.warning(f"⚠️ {symbol} 分析失败: {str(e)[:60]}...")
+        return None
+
+# ========== Streamlit 界面 ==========
+st.set_page_config(page_title="多股票评分系统", layout="wide")
+st.title("📊 多股票超买超卖评分系统")
+st.caption("0 = 极端超卖，100 = 极端超买 | 支持 TD 9 信号 | 手机端友好")
+
+# 输入区域
+col1, col2 = st.columns([3, 1])
+with col1:
+    symbols_input = st.text_input(
+        "输入股票代码（英文逗号分隔）",
+        value="QQQ, 0700.HK, AAPL",
+        help="示例: QQQ, 0700.HK, 600519.SS"
+    )
+with col2:
+    months_back = st.slider("回溯月数", 1, 12, 6)
+
+today = date.today()
+end_date = st.date_input("截止日期", value=today)
+
+if st.button("📊 一键分析所有股票", type="primary"):
+    # 解析股票列表
+    symbols = [s.strip().upper() for s in symbols_input.split(",") if s.strip()]
+    if not symbols:
+        st.error("请输入至少一个股票代码")
+        st.stop()
+    
+    # 计算日期范围
+    start_date = pd.to_datetime(end_date) - pd.DateOffset(months=months_back)
+    start_str = start_date.strftime("%Y-%m-%d")
+    end_str = (pd.to_datetime(end_date) + pd.Timedelta(days=1)).strftime("%Y-%m-%d")
+    
+    # 分析所有股票
+    results = []
+    with st.spinner(f"正在分析 {len(symbols)} 只股票..."):
+        for symbol in symbols:
+            result = analyze_single_stock(symbol, start_str, end_str)
+            if result:
+                results.append(result)
+    
+    if not results:
+        st.error("所有股票分析失败，请检查代码格式")
+    else:
+        # 构建结果表格
+        df_results = pd.DataFrame(results)
+        df_results = df_results.round(2)
+        
+        # 显示汇总表
+        st.subheader(f"📈 分析结果（共 {len(results)} 只股票）")
+        
+        # 格式化 TD 信号
+        def format_td(row):
+            signals = []
+            if row['td_buy']:
+                signals.append(f"🟢 TD Buy ({int(row['td_buy_count'])})")
+            if row['td_sell']:
+                signals.append(f"🔴 TD Sell ({int(row['td_sell_count'])})")
+            return "; ".join(signals) if signals else "—"
+        
+        df_display = df_results[['symbol', 'price', 'score', 'rsi', 'j', 'bb_position']].copy()
+        df_display['TD 信号'] = df_results.apply(format_td, axis=1)
+        
+        # 使用背景色渐变突出评分
+        st.dataframe(
+            df_display.style
+            .format(precision=2)
+            .background_gradient(subset=['score'], cmap='RdYlGn_r', vmin=0, vmax=100),
+            use_container_width=True,
+            height=500
+        )
+        
+        # 显示详细趋势图（可选）
+        with st.expander("📉 查看每只股票的评分趋势（最近60天）"):
+            for result in results:
+                st.markdown(f"### {result['symbol']}")
+                hist = result['history'].dropna().tail(60)
+                if not hist.empty:
+                    st.line_chart(hist['obos_score'])
+                else:
+                    st.write("无足够历史数据")
+
+# 使用说明
+with st.expander("ℹ️ 股票代码格式说明"):
+    st.markdown("""
+    - **美股**: `AAPL`, `QQQ`, `TSLA`  
+    - **港股**: `0700.HK`（4位，不足补零）  
+    - **A股**: `600519.SS`（沪市）, `000858.SZ`（深市）  
+    - **多个代码**: 用英文逗号分隔，如 `QQQ, 0700.HK, 600519.SS`
+    """)
