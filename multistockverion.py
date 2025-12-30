@@ -172,7 +172,7 @@ if st.button("📊 一键分析所有股票", type="primary"):
         
         # 选择需要的列，包括 TD 计数
         df_display = df_results[[
-            'symbol', 'score', '9T_buy_count', '9T_sell_count', 'rsi', 'j', 'bb_position'
+            'symbol', 'score', 'td_buy_count', 'td_sell_count', 'rsi', 'j', 'bb_position'
         ]].copy()
         
         # 可选：重命名列，更清晰
