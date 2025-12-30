@@ -7,15 +7,10 @@ import pandas as pd
 import pandas_ta as ta
 
 # ========== 你的函数（保持不变）==========
-def fetch_stock_data(symbol, period="6mo"):
-    """
-    自动抓取股票 OHLCV 数据
-    - A股: '600519.SS' (贵州茅台)
-    - 港股: '0700.HK'
-    - 美股: 'AAPL'
-    """
-    data = yf.download(symbol, period=period, interval="1d",auto_adjust=True)
+def fetch_stock_data(symbol, start, end):
+    data = yf.download(symbol, start=start, end=end, auto_adjust=True)
     return data
+
 
 def check_td_nine(df):
     """
