@@ -173,14 +173,8 @@ if st.button("📊 一键分析所有股票", type="primary"):
         df_display = df_results[['symbol', 'price', 'score', 'rsi', 'j', 'bb_position']].copy()
         df_display['TD 信号'] = df_results.apply(format_td, axis=1)
         
-        # 使用背景色渐变突出评分
-        st.dataframe(
-            df_display.style
-            .format(precision=2)
-            .background_gradient(subset=['score'], cmap='RdYlGn_r', vmin=0, vmax=100),
-            use_container_width=True,
-            height=500
-        )
+        # 使用背景色渐变突出评分 / 无matplot
+        st.dataframe(df_display, use_container_width=True, height=500)
         
         # 显示详细趋势图（可选）
         with st.expander("📉 查看每只股票的评分趋势（最近60天）"):
