@@ -170,9 +170,18 @@ if st.button("📊 一键分析所有股票", type="primary"):
                 signals.append(f"🔴 TD Sell ({int(row['td_sell_count'])})")
             return "; ".join(signals) if signals else "—"
         
-        df_display = df_results[['symbol', 'price', 'score', 'rsi', 'j', 'bb_position']].copy()
-        df_display['TD 信号'] = df_results.apply(format_td, axis=1)
+        # 选择需要的列，包括 TD 计数
+        df_display = df_results[[
+            'symbol', 'price', 'score', 'rsi', 'j', 'bb_position',
+            'td_buy_count', 'td_sell_count'
+        ]].copy()
         
+        # 可选：重命名列，更清晰
+        df_display.columns = [
+            '股票', '价格', '评分', 'RSI', 'KDJ-J', '布林%', 'TD Buy', 'TD Sell'
+        ]
+
+
         # 使用背景色渐变突出评分 / 无matplot
         st.dataframe(df_display, use_container_width=True, height=500)
         
