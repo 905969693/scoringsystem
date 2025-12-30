@@ -177,8 +177,8 @@ if st.button("📊 一键分析所有股票", type="primary"):
         
         # 可选：重命名列，更清晰
         df_display.columns = [
-            '股票', '价格', '评分', 'RSI', 'KDJ-J', '布林%', 'TD Buy', 'TD Sell'
-        ]
+            '股票', '评分','TD Buy', 'TD Sell', 'RSI', 'KDJ-J', '布林%']
+        
 
 
         # 使用背景色渐变突出评分 / 无matplot
