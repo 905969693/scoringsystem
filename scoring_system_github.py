@@ -1,10 +1,9 @@
 # app.py
 import streamlit as st
 import yfinance as yf
-#import talib
+import talib
 import numpy as np
 import pandas as pd
-import pandas_ta as ta
 
 # ========== 你的函数（保持不变）==========
 def fetch_stock_data(symbol, start, end):
@@ -68,18 +67,38 @@ def calculate_indicators(df):
     high = df['High'].values.flatten()
     low = df['Low'].values.flatten()
 
-    df['rsi'] = ta.rsi(close, length=14)
-    stoch = ta.stoch(high, low, close, k=9, d=3)
-    df = pd.concat([df, stoch], axis=1)
-    df['j'] = 3 * df['STOCHk_9_3_3'] - 2 * df['STOCHd_9_3_3']
+    # RSI (14日)
+    df['rsi'] = talib.RSI(close, timeperiod=14)
     
-    bb = ta.bbands(close, length=20, std=2)
-    df = pd.concat([df, bb], axis=1)
-    df['bb_position'] = 100 * (close - df['BBL_20_2.0']) / (df['BBU_20_2.0'] - df['BBL_20_2.0'] + 1e-8)
-    df['bb_position'] = np.clip(df['bb_position'], 0, 100)
+    # KDJ (常用参数 9,3,3)
+    df['k'], df['d'] = talib.STOCH(
+        high, low, close,
+        fastk_period=9,
+        slowk_period=3,
+        slowk_matype=0,
+        slowd_period=3,
+        slowd_matype=0
+    )
+    df['j'] = 3 * df['k'] - 2 * df['d']  # J = 3K - 2D
+    
+    # 布林带 (20日, 2标准差)
+    upper, middle, lower = talib.BBANDS(
+        close,
+        timeperiod=20,
+        nbdevup=2,
+        nbdevdn=2,
+        matype=0
+    )
+    df['bb_upper'] = upper
+    df['bb_middle'] = middle
+    df['bb_lower'] = lower
+    
+    # 布林带位置百分比（0=下轨, 100=上轨）
+    df['bb_position'] = 100 * (close - lower) / (upper - lower)
+    df['bb_position'] = np.clip(df['bb_position'], 0, 100)  # 防止除零或溢出
+
+    
     return df
-
-
 def calculate_obos_score(df, weights=None):
     if weights is None:
         weights = {'rsi': 0.4, 'kdj': 0.3, 'bb': 0.3}
@@ -110,7 +129,7 @@ st.caption("0 = 极端超卖，100 = 极端超买 | 手机端可直接访问")
 
 # 输入框
 symbol = st.text_input("请输入股票代码（如 0700.HK, AAPL, 600519.SS）", value="0700.HK")
-end_date = st.date_input("截止日期", value=pd.to_datetime("2025-10-29"))
+end_date = st.date_input("截止日期", value=pd.to_datetime("2025-12-29"))
 months_back = st.slider("回溯月数", min_value=1, max_value=12, value=6)
 
 if st.button("📊 计算评分"):
