@@ -216,7 +216,7 @@ if st.button("📊 一键分析所有股票", type="primary"):
             
             # 评分（左轴）
             ax1.plot(hist_plot.index, hist_plot['obos_score'], color='red', linewidth=1.5)
-            ax1.set_ylabel('score (0-100)', color='red')
+            ax1.set_ylabel('Score (0-100)', color='red')
             ax1.tick_params(axis='y', labelcolor='red')
             ax1.set_ylim(0, 100)
             ax1.axhline(90, color='orange', linestyle='--', alpha=0.6)
@@ -230,7 +230,7 @@ if st.button("📊 一键分析所有股票", type="primary"):
             ax2.tick_params(axis='y', labelcolor='blue')
             
             # 格式化
-            ax1.set_title(f"{result['symbol']} — Technical Score vs Price", fontsize=12)
+            ax1.set_title(f"{result['symbol']} — Technical Score (Red, LHS) vs Price (Blue, RHS)", fontsize=12)
             fig.autofmt_xdate()  # 自动旋转日期
             fig.tight_layout()
             
