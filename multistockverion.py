@@ -7,8 +7,8 @@ import pandas as pd
 from datetime import date
 
 # ========== 保持你原有的函数不变 ==========
-def fetch_stock_data(symbol, start, end):
-    data = yf.download(symbol, start=start, end=end, auto_adjust=True, progress=False)
+def fetch_stock_data(symbol, start, end,interval):
+    data = yf.download(symbol, start=start, end=end, interval=interval, auto_adjust=True, progress=False)
     return data
 
 def check_td_nine(df):
@@ -83,10 +83,10 @@ def calculate_obos_score(df, weights=None):
     return np.clip(score, 0, 100)
 
 # ========== 多股票分析函数 ==========
-def analyze_single_stock(symbol, start, end):
+def analyze_single_stock(symbol, start, end,interval):
     """分析单只股票，返回结果字典"""
     try:
-        df = fetch_stock_data(symbol, start=start, end=end)
+        df = fetch_stock_data(symbol, start=start, end=end,interval=interval)
         if df.empty:
             return None
         
@@ -118,16 +118,29 @@ st.title("📊 多股票超买超卖评分系统")
 st.caption("0 = 极端超卖，100 = 极端超买 | 支持 TD 9 信号 | 手机端友好")
 
 # 输入区域
-col1, col2 = st.columns([3, 1])
+col1, col2, col3 = st.columns([3, 1, 1])
 ticker_list = "PDD, NVDA, QQQ, TLT, RSP, GLD, SLV, USO, KBE, IBIT"
+
 with col1:
     symbols_input = st.text_input(
         "输入股票代码（英文逗号分隔）",
-        value= ticker_list,
-        help="示例: QQQ, 0700.HK, 600519.SS"
+        value=ticker_list,
+        help="示例: QQQ, 0700.HK, 600519.SS, USDJPY=X"
     )
+
 with col2:
-    months_back = st.slider("回溯月数", 1, 12, 6)
+    months_back = st.slider("回溯月数", 1, 24, 6)
+
+with col3:
+    # 👇 新增：下拉菜单选择 interval
+    interval = st.selectbox(
+        "K线周期",
+        options=["1d", "1wk"],
+        format_func=lambda x: {"1d": "日线", "1wk": "周线"}[x]
+    )
+
+
+
 
 today = date.today()
 end_date = st.date_input("截止日期", value=today)
@@ -148,7 +161,7 @@ if st.button("📊 一键分析所有股票", type="primary"):
     results = []
     with st.spinner(f"正在分析 {len(symbols)} 只股票..."):
         for symbol in symbols:
-            result = analyze_single_stock(symbol, start_str, end_str)
+            result = analyze_single_stock(symbol, start_str, end_str,interval)
             if result:
                 results.append(result)
     
