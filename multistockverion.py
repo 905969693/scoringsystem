@@ -116,7 +116,7 @@ def analyze_single_stock(symbol, start, end,interval):
 # ========== Streamlit 界面 ==========
 st.set_page_config(page_title="多股票评分系统", layout="wide")
 st.title("📊 多股票超买超卖评分系统")
-st.caption("0 = 极端超卖，100 = 极端超买 | 支持 TD 9 信号 | 手机端友好")
+st.caption("0 = 极端超卖，100 = 极端超买 | 手机端友好")
 
 # 输入区域
 col1, col2, col3 = st.columns([3, 1, 1])
@@ -210,7 +210,9 @@ if st.button("📊 一键分析所有股票", type="primary"):
                 st.write("⚠️ 数据不足（需至少10个周期）")
                 continue
             
-            hist_plot = hist.tail(60)
+            #hist_plot = hist.tail(60)  这里只取了最后60个数据点
+            
+            hist_plot = hist #这里全都取了，试试看
             
             fig, ax1 = plt.subplots(figsize=(10, 4))
             
