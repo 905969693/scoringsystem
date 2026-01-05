@@ -238,18 +238,7 @@ if st.button("📊 一键分析所有股票", type="primary"):
             plt.close(fig)
 
         
-        '''
-        旧版本的显示趋势图
-        # 显示详细趋势图（可选）
-        with st.expander("📉 查看每只股票的评分趋势（最近60天）"):
-            for result in results:
-                st.markdown(f"### {result['symbol']}")
-                hist = result['history'].dropna().tail(60)
-                if not hist.empty:
-                    st.line_chart(hist['obos_score'])
-                else:
-                    st.write("无足够历史数据")
-        '''
+
 # 使用说明
 with st.expander("ℹ️ 股票代码格式说明"):
     st.markdown("""
