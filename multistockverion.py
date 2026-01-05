@@ -216,21 +216,21 @@ if st.button("📊 一键分析所有股票", type="primary"):
             
             # 评分（左轴）
             ax1.plot(hist_plot.index, hist_plot['obos_score'], color='red', linewidth=1.5)
-            ax1.set_ylabel('评分 (0-100)', color='red')
+            ax1.set_ylabel('score (0-100)', color='red')
             ax1.tick_params(axis='y', labelcolor='red')
             ax1.set_ylim(0, 100)
-            ax1.axhline(80, color='orange', linestyle='--', alpha=0.6)
-            ax1.axhline(20, color='green', linestyle='--', alpha=0.6)
+            ax1.axhline(90, color='orange', linestyle='--', alpha=0.6)
+            ax1.axhline(10, color='green', linestyle='--', alpha=0.6)
             ax1.grid(True, linestyle='--', alpha=0.3)
             
             # 股价（右轴）
             ax2 = ax1.twinx()
             ax2.plot(hist_plot.index, hist_plot['Close'], color='blue', linewidth=1.5)
-            ax2.set_ylabel('股价', color='blue')
+            ax2.set_ylabel('Price', color='blue')
             ax2.tick_params(axis='y', labelcolor='blue')
             
             # 格式化
-            ax1.set_title(f"{result['symbol']} — 超买超卖评分 vs 股价", fontsize=12)
+            ax1.set_title(f"{result['symbol']} — Technical Score vs Price", fontsize=12)
             fig.autofmt_xdate()  # 自动旋转日期
             fig.tight_layout()
             
