@@ -5,6 +5,7 @@ import talib
 import numpy as np
 import pandas as pd
 from datetime import date
+import matplotlib.pyplot as plt
 
 # ========== 保持你原有的函数不变 ==========
 def fetch_stock_data(symbol, start, end,interval):
@@ -197,7 +198,48 @@ if st.button("📊 一键分析所有股票", type="primary"):
 
         # 使用背景色渐变突出评分 / 无matplot
         st.dataframe(df_display, use_container_width=True, height=500)
+
+
+    
+    with st.expander("📉 查看每只股票的评分与价格趋势"):
+        for result in results:
+            st.markdown(f"### {result['symbol']}")
+            hist = result['history'].dropna()
+            
+            if len(hist) < 10:
+                st.write("⚠️ 数据不足（需至少10个周期）")
+                continue
+            
+            hist_plot = hist.tail(60)
+            
+            fig, ax1 = plt.subplots(figsize=(10, 4))
+            
+            # 评分（左轴）
+            ax1.plot(hist_plot.index, hist_plot['obos_score'], color='red', linewidth=1.5)
+            ax1.set_ylabel('评分 (0-100)', color='red')
+            ax1.tick_params(axis='y', labelcolor='red')
+            ax1.set_ylim(0, 100)
+            ax1.axhline(80, color='orange', linestyle='--', alpha=0.6)
+            ax1.axhline(20, color='green', linestyle='--', alpha=0.6)
+            ax1.grid(True, linestyle='--', alpha=0.3)
+            
+            # 股价（右轴）
+            ax2 = ax1.twinx()
+            ax2.plot(hist_plot.index, hist_plot['Close'], color='blue', linewidth=1.5)
+            ax2.set_ylabel('股价', color='blue')
+            ax2.tick_params(axis='y', labelcolor='blue')
+            
+            # 格式化
+            ax1.set_title(f"{result['symbol']} — 超买超卖评分 vs 股价", fontsize=12)
+            fig.autofmt_xdate()  # 自动旋转日期
+            fig.tight_layout()
+            
+            st.pyplot(fig)
+            plt.close(fig)
+
         
+        '''
+        旧版本的显示趋势图
         # 显示详细趋势图（可选）
         with st.expander("📉 查看每只股票的评分趋势（最近60天）"):
             for result in results:
@@ -207,7 +249,7 @@ if st.button("📊 一键分析所有股票", type="primary"):
                     st.line_chart(hist['obos_score'])
                 else:
                     st.write("无足够历史数据")
-
+        '''
 # 使用说明
 with st.expander("ℹ️ 股票代码格式说明"):
     st.markdown("""
