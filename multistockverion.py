@@ -182,7 +182,7 @@ st.caption("0 = Extreme Oversold，100 = Extreme Overbought")
 
 # 输入区域
 col1, col2, col3 = st.columns([3, 1, 1])
-ticker_list = "PDD, NVDA, QQQ, TLT, RSP, GLD, SLV, USO, KBE, IBIT"
+ticker_list = "QQQ, SPY, TLT, GLD, USDJPY=X"
 
 with col1:
     symbols_input = st.text_input(
