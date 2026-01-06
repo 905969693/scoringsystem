@@ -114,9 +114,9 @@ def analyze_single_stock(symbol, start, end,interval):
         return None
 
 # ========== Streamlit 界面 ==========
-st.set_page_config(page_title="多股票评分系统", layout="wide")
-st.title("📊 多股票超买超卖评分系统")
-st.caption("0 = 极端超卖，100 = 极端超买 | 手机端友好")
+st.set_page_config(page_title="Stock Scoring System", layout="wide")
+st.title("📊 Stock Scoring System")
+st.caption("0 = Extreme Oversold，100 = Extreme Overbought")
 
 # 输入区域
 col1, col2, col3 = st.columns([3, 1, 1])
@@ -124,33 +124,33 @@ ticker_list = "PDD, NVDA, QQQ, TLT, RSP, GLD, SLV, USO, KBE, IBIT"
 
 with col1:
     symbols_input = st.text_input(
-        "输入股票代码（英文逗号分隔）",
+        "Input Ticker（use comma to separate）",
         value=ticker_list,
-        help="示例: QQQ, 0700.HK, 600519.SS, USDJPY=X"
+        help="E.g: QQQ, 0700.HK, USDJPY=X"
     )
 
 with col2:
-    months_back = st.slider("回溯月数", 1, 24, 6)
+    months_back = st.slider("Lookback Months", 1, 24, 6)
 
 with col3:
     # 👇 新增：下拉菜单选择 interval
     interval = st.selectbox(
-        "K线周期",
+        "Data Interval",
         options=["1d", "1wk"],
-        format_func=lambda x: {"1d": "日线", "1wk": "周线"}[x]
+        format_func=lambda x: {"1d": "Daily", "1wk": "Weekly"}[x]
     )
 
 
 
 
 today = date.today()
-end_date = st.date_input("截止日期", value=today)
+end_date = st.date_input("End Date", value=today)
 
-if st.button("📊 一键分析所有股票", type="primary"):
+if st.button("📊 Analyze All", type="primary"):
     # 解析股票列表
     symbols = [s.strip().upper() for s in symbols_input.split(",") if s.strip()]
     if not symbols:
-        st.error("请输入至少一个股票代码")
+        st.error("Pls input at least one ticker")
         st.stop()
     
     # 计算日期范围
@@ -160,21 +160,21 @@ if st.button("📊 一键分析所有股票", type="primary"):
     
     # 分析所有股票
     results = []
-    with st.spinner(f"正在分析 {len(symbols)} 只股票..."):
+    with st.spinner(f"Analyzing {len(symbols)} Stocks..."):
         for symbol in symbols:
             result = analyze_single_stock(symbol, start_str, end_str,interval)
             if result:
                 results.append(result)
     
     if not results:
-        st.error("所有股票分析失败，请检查代码格式")
+        st.error("All failed, pls check formating")
     else:
         # 构建结果表格
         df_results = pd.DataFrame(results)
         df_results = df_results.round(2)
         
         # 显示汇总表
-        st.subheader(f"📈 分析结果（共 {len(results)} 只股票）")
+        st.subheader(f"📈 Result（ {len(results)} Stocks）")
         
         # 格式化 TD 信号
         def format_td(row):
@@ -192,7 +192,7 @@ if st.button("📊 一键分析所有股票", type="primary"):
         
         # 可选：重命名列，更清晰
         df_display.columns = [
-            '股票', '评分','TD Buy', 'TD Sell', 'RSI', 'KDJ-J', '布林%']
+            'Ticker', 'Score','TD Buy', 'TD Sell', 'RSI', 'KDJ-J', 'Bollinger%']
         
 
 
@@ -201,13 +201,13 @@ if st.button("📊 一键分析所有股票", type="primary"):
 
 
     
-    with st.expander("📉 查看每只股票的评分与价格趋势"):
+    with st.expander("📉 Check the Score & Price Trend of Each Stock"):
         for result in results:
             st.markdown(f"### {result['symbol']}")
             hist = result['history'].dropna()
             
             if len(hist) < 10:
-                st.write("⚠️ 数据不足（需至少10个周期）")
+                st.write("⚠️ Not Enough Data (Need at least 10 data points)")
                 continue
             
             #hist_plot = hist.tail(60)  这里只取了最后60个数据点
@@ -240,7 +240,7 @@ if st.button("📊 一键分析所有股票", type="primary"):
             plt.close(fig)
 
         
-
+'''
 # 使用说明
 with st.expander("ℹ️ 股票代码格式说明"):
     st.markdown("""
@@ -249,3 +249,4 @@ with st.expander("ℹ️ 股票代码格式说明"):
     - **A股**: `600519.SS`（沪市）, `000858.SZ`（深市）  
     - **多个代码**: 用英文逗号分隔，如 `QQQ, 0700.HK, 600519.SS`
     """)
+'''
