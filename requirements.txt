@@ -5,3 +5,5 @@ numpy
 pandas
 ta-lib
 matplotlib
+os
+json
