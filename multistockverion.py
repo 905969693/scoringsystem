@@ -220,9 +220,9 @@ if st.session_state.watchlist:
         use_container_width=True,
         hide_index=True
     )
-    st.info("🔗 Watchlist saved to current URL. Save this link for permanent use!")
+    st.info("🔗 Watchlist saved to current URL. SAVE THIS LINK FOR PERMANENT USE!")
 else:
-    st.info("After you added ticker, the URL will automatically update. Save this link for permanent use!")
+    st.info("After you added ticker, the URL will automatically update. SAVE THIS LINK FOR PERMANENT USE!")
 
 
 today = date.today()
