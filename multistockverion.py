@@ -6,6 +6,8 @@ import numpy as np
 import pandas as pd
 from datetime import date
 import matplotlib.pyplot as plt
+import os
+import jason
 
 # ========== 保持你原有的函数不变 ==========
 def fetch_stock_data(symbol, start, end,interval):
