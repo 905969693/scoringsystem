@@ -234,7 +234,7 @@ if st.button("📊 Analyze All", type="primary"):
     # ✅ 优先使用用户的关注列表
     if st.session_state.watchlist:
         symbols = st.session_state.watchlist
-        st.info(f"Analyzing「{username}'s Watchlist」 with {len(symbols)} ticker(s)")
+        st.info(f"Analyzing {len(symbols)} Tickers in the Watchlist")
     else:
        # 回退到顶部输入框
         symbols = [s.strip().upper() for s in symbols_input.split(",") if s.strip()]
