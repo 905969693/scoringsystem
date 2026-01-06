@@ -7,7 +7,7 @@ import pandas as pd
 from datetime import date
 import matplotlib.pyplot as plt
 import os
-import jason
+import json
 
 # ========== 保持你原有的函数不变 ==========
 def fetch_stock_data(symbol, start, end,interval):
@@ -117,6 +117,41 @@ def analyze_single_stock(symbol, start, end,interval):
 
 # ========== Streamlit 界面 ==========
 st.set_page_config(page_title="Stock Scoring System", layout="wide")
+
+# ========== 用户身份识别（轻量级）==========
+st.sidebar.title("👤 User Login")
+username = st.sidebar.text_input(
+    "Input Your User Name",
+    value="default",
+    help="Login to save your watchlist"
+)
+
+if not username.strip():
+    st.sidebar.warning("⚠️ Pls input user name to save watchlist")
+    st.stop()
+
+# 标准化用户名（转小写，去空格）
+safe_username = "".join(c for c in username.strip().lower() if c.isalnum() or c in ("_", "-"))
+if not safe_username:
+    st.sidebar.error("User name can only contain character, number, "_", and "-"")
+    st.stop()
+
+# 生成用户专属文件名
+WATCHLIST_FILE = f"watchlist_{safe_username}.json"
+
+# 初始化 session_state.watchlist（按用户隔离）
+if 'watchlist' not in st.session_state or st.session_state.get('_user') != safe_username:
+    st.session_state._user = safe_username
+    if os.path.exists(WATCHLIST_FILE):
+        try:
+            with open(WATCHLIST_FILE, "r") as f:
+                st.session_state.watchlist = json.load(f)
+        except:
+            st.session_state.watchlist = []
+    else:
+        st.session_state.watchlist = []
+
+
 st.title("📊 Stock Scoring System")
 st.caption("0 = Extreme Oversold，100 = Extreme Overbought")
 
@@ -143,18 +178,67 @@ with col3:
     )
 
 
-
-
 today = date.today()
 end_date = st.date_input("End Date", value=today)
 
+# ========== 我的关注列表（用户专属）==========
+st.subheader(f"📌 Watchlist of {username} ")
+
+# 添加新 ticker
+new_tickers = st.text_input(
+    "Add tickers (use comma to separate)",
+    placeholder="E.g：QQQ, NVDA, 0700.HK",
+    key="new_watchlist_input"
+)
+
+col_add, col_clear = st.columns([1, 1])
+with col_add:
+    if st.button("➕ Add to Watchlist"):
+        if new_tickers.strip():
+            added = [s.strip().upper() for s in new_tickers.split(",") if s.strip()]
+            # 去重合并
+            current = set(st.session_state.watchlist)
+            current.update(added)
+            st.session_state.watchlist = sorted(list(current))
+            # 保存到用户专属文件
+            with open(WATCHLIST_FILE, "w") as f:
+                json.dump(st.session_state.watchlist, f)
+            st.success(f"✅ 已添加: {', '.join(added)}")
+        else:
+            st.warning("At least input one ticker")
+
+with col_clear:
+    if st.button("🗑️ Clear My Watchlist"):
+        st.session_state.watchlist = []
+        if os.path.exists(WATCHLIST_FILE):
+            os.remove(WATCHLIST_FILE)
+        st.success("Watchlist Cleared")
+
+# 显示当前列表
+if st.session_state.watchlist:
+    st.dataframe(
+        pd.DataFrame({"Ticker": st.session_state.watchlist}),
+        use_container_width=True,
+        hide_index=True
+    )
+else:
+    st.info("Currently No Watchlist. After added, pls click 'Analyze All'")
+
+
+
 if st.button("📊 Analyze All", type="primary"):
-    # 解析股票列表
-    symbols = [s.strip().upper() for s in symbols_input.split(",") if s.strip()]
-    if not symbols:
-        st.error("Pls input at least one ticker")
-        st.stop()
-    
+    # ✅ 优先使用用户的关注列表
+    if st.session_state.watchlist:
+        symbols = st.session_state.watchlist
+        st.info(f"Analyzing「{username}'s Watchlist」 with {len(symbols)} ticker(s)")
+    else:
+        # 回退到顶部输入框（临时分析）
+        symbols_input = symbols_input  # 这是你在 col1 中定义的变量
+        symbols = [s.strip().upper() for s in symbols_input.split(",") if s.strip()]
+        if not symbols:
+            st.error("请先添加股票到关注列表，或在顶部输入框中输入 ticker")
+            st.stop()
+            
     # 计算日期范围
     start_date = pd.to_datetime(end_date) - pd.DateOffset(months=months_back)
     start_str = start_date.strftime("%Y-%m-%d")
