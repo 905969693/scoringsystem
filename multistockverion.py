@@ -240,13 +240,3 @@ if st.button("📊 Analyze All", type="primary"):
             plt.close(fig)
 
         
-'''
-# 使用说明
-with st.expander("ℹ️ 股票代码格式说明"):
-    st.markdown("""
-    - **美股**: `AAPL`, `QQQ`, `TSLA`  
-    - **港股**: `0700.HK`（4位，不足补零）  
-    - **A股**: `600519.SS`（沪市）, `000858.SZ`（深市）  
-    - **多个代码**: 用英文逗号分隔，如 `QQQ, 0700.HK, 600519.SS`
-    """)
-'''
