@@ -6,8 +6,20 @@ import numpy as np
 import pandas as pd
 from datetime import date
 import matplotlib.pyplot as plt
-import os
-import json
+import urllib.parse
+
+def get_watchlist_from_url():
+    """从 URL query 参数获取关注列表"""
+    query_params = st.experimental_get_query_params()
+    tickers = query_params.get("tickers", [""])
+    return [t.strip().upper() for t in tickers[0].split(",") if t.strip()] if tickers[0] else []
+
+def set_watchlist_to_url(tickers):
+    """将关注列表写入 URL"""
+    if tickers:
+        st.experimental_set_query_params(tickers=",".join(tickers))
+    else:
+        st.experimental_set_query_params()  # 清空参数
 
 # ========== 保持你原有的函数不变 ==========
 def fetch_stock_data(symbol, start, end,interval):
@@ -143,42 +155,13 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# ========== 用户身份识别（轻量级）==========
-st.sidebar.title("👤 User Login")
-username = st.sidebar.text_input(
-    "Input Your User Name",
-    value="default",
-    help="Login to save your watchlist"
-)
-
-if not username.strip():
-    st.sidebar.warning("⚠️ Pls input user name to save watchlist")
-    st.stop()
-
-# 标准化用户名（转小写，去空格）
-safe_username = "".join(c for c in username.strip().lower() if c.isalnum() or c in ("_", "-"))
-if not safe_username:
-    st.sidebar.error("User name can only contain character, number, '_' , and '-' ")
-    st.stop()
-
-# 生成用户专属文件名
-WATCHLIST_FILE = f"watchlist_{safe_username}.json"
-
-# 初始化 session_state.watchlist（按用户隔离）
-if 'watchlist' not in st.session_state or st.session_state.get('_user') != safe_username:
-    st.session_state._user = safe_username
-    if os.path.exists(WATCHLIST_FILE):
-        try:
-            with open(WATCHLIST_FILE, "r") as f:
-                st.session_state.watchlist = json.load(f)
-        except:
-            st.session_state.watchlist = []
-    else:
-        st.session_state.watchlist = []
-
 
 st.title("📊 Stock Scoring System")
 st.caption("0 = Extreme Oversold，100 = Extreme Overbought")
+
+# 初始化关注列表（从 URL 加载）
+if 'watchlist' not in st.session_state:
+    st.session_state.watchlist = get_watchlist_from_url()
 
 # 输入区域
 col1, col2, col3 = st.columns([3, 1, 1])
@@ -202,42 +185,33 @@ with col3:
         format_func=lambda x: {"1d": "Daily", "1wk": "Weekly"}[x]
     )
 
+# ========== 我的关注列表（通过 URL 保存）==========
+st.subheader("📌 Save Your Watchlist")
 
-today = date.today()
-end_date = st.date_input("End Date", value=today)
-
-# ========== 我的关注列表（用户专属）==========
-st.subheader(f"📌 Watchlist of {username} ")
-
-# 添加新 ticker
 new_tickers = st.text_input(
-    "Add tickers (use comma to separate)",
-    placeholder="E.g：QQQ, NVDA, 0700.HK",
+    "Add Tickers (separate with comma) ",
+    placeholder="e.g.：QQQ, NVDA, 0700.HK",
     key="new_watchlist_input"
 )
 
 col_add, col_clear = st.columns([1, 1])
 with col_add:
-    if st.button("➕ Add to Watchlist"):
+    if st.button("➕ Add & Update URL"):
         if new_tickers.strip():
             added = [s.strip().upper() for s in new_tickers.split(",") if s.strip()]
-            # 去重合并
             current = set(st.session_state.watchlist)
             current.update(added)
             st.session_state.watchlist = sorted(list(current))
-            # 保存到用户专属文件
-            with open(WATCHLIST_FILE, "w") as f:
-                json.dump(st.session_state.watchlist, f)
-            st.success(f"✅ 已添加: {', '.join(added)}")
+            set_watchlist_to_url(st.session_state.watchlist)
+            st.success("✅ Updated! Pls save the current URL")
         else:
-            st.warning("At least input one ticker")
+            st.warning("pls at least input one ticker")
 
 with col_clear:
-    if st.button("🗑️ Clear My Watchlist"):
+    if st.button("🗑️ Clear the Watchlist"):
         st.session_state.watchlist = []
-        if os.path.exists(WATCHLIST_FILE):
-            os.remove(WATCHLIST_FILE)
-        st.success("Watchlist Cleared")
+        set_watchlist_to_url([])
+        st.success("Cleared")
 
 # 显示当前列表
 if st.session_state.watchlist:
@@ -246,8 +220,13 @@ if st.session_state.watchlist:
         use_container_width=True,
         hide_index=True
     )
+    st.info("🔗 Watchlist saved to current URL. Save this link for permanent use!")
 else:
-    st.info("Currently No Watchlist. After added, pls click 'Analyze All'")
+    st.info("After you added ticker, the URL will automatically update. Save this link for permanent use!")
+
+
+today = date.today()
+end_date = st.date_input("End Date", value=today)
 
 
 
@@ -257,11 +236,10 @@ if st.button("📊 Analyze All", type="primary"):
         symbols = st.session_state.watchlist
         st.info(f"Analyzing「{username}'s Watchlist」 with {len(symbols)} ticker(s)")
     else:
-        # 回退到顶部输入框（临时分析）
-        symbols_input = symbols_input  # 这是你在 col1 中定义的变量
+       # 回退到顶部输入框
         symbols = [s.strip().upper() for s in symbols_input.split(",") if s.strip()]
         if not symbols:
-            st.error("请先添加股票到关注列表，或在顶部输入框中输入 ticker")
+            st.error("Pls add tickers to watchlist, or simply input ticker(s)")
             st.stop()
             
     # 计算日期范围
