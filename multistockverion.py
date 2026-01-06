@@ -201,7 +201,7 @@ if st.button("📊 Analyze All", type="primary"):
 
 
     
-    with st.expander("📉 Check the Score & Price Trend of Each Stock"):
+    with st.expander("Check the Score & Price Trend of Each Ticker"):
         for result in results:
             st.markdown(f"### {result['symbol']}")
             hist = result['history'].dropna()
