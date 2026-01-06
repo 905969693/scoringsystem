@@ -124,7 +124,7 @@ ticker_list = "PDD, NVDA, QQQ, TLT, RSP, GLD, SLV, USO, KBE, IBIT"
 
 with col1:
     symbols_input = st.text_input(
-        "Input Ticker（use comma to separate）",
+        "Input Ticker(use comma to separate)",
         value=ticker_list,
         help="E.g: QQQ, 0700.HK, USDJPY=X"
     )
@@ -174,7 +174,7 @@ if st.button("📊 Analyze All", type="primary"):
         df_results = df_results.round(2)
         
         # 显示汇总表
-        st.subheader(f"📈 Result（ {len(results)} Stocks）")
+        st.subheader(f"📈 Result ( {len(results)} Stocks)")
         
         # 格式化 TD 信号
         def format_td(row):
