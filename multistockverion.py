@@ -118,6 +118,31 @@ def analyze_single_stock(symbol, start, end,interval):
 # ========== Streamlit 界面 ==========
 st.set_page_config(page_title="Stock Scoring System", layout="wide")
 
+# 设置字体大小
+st.markdown("""
+<style>
+    /* 全局字体大小 */
+    html, body, [class*="css"] {
+        font-size: 12px !important;
+    }
+    
+    /* 标题调整 */
+    h1 { font-size: 24px !important; }
+    h2 { font-size: 20px !important; }
+    h3 { font-size: 16px !important; }
+    
+    /* 输入框、按钮等 */
+    .stTextInput, .stButton, .stSelectbox {
+        font-size: 12px !important;
+    }
+    
+    /* 表格字体 */
+    .stDataFrame {
+        font-size: 10px !important;
+    }
+</style>
+""", unsafe_allow_html=True)
+
 # ========== 用户身份识别（轻量级）==========
 st.sidebar.title("👤 User Login")
 username = st.sidebar.text_input(
