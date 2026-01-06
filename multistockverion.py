@@ -133,7 +133,7 @@ if not username.strip():
 # 标准化用户名（转小写，去空格）
 safe_username = "".join(c for c in username.strip().lower() if c.isalnum() or c in ("_", "-"))
 if not safe_username:
-    st.sidebar.error("User name can only contain character, number, "_", and "-"")
+    st.sidebar.error("User name can only contain character, number, '_' , and '-' ")
     st.stop()
 
 # 生成用户专属文件名
