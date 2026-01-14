@@ -293,12 +293,12 @@ if st.button("📊 Analyze All", type="primary"):
         
         # 选择需要的列，包括 TD 计数
         df_display = df_results[[
-            'symbol', 'score', 'td_buy_count', 'td_sell_count', 'rsi', 'j', 'bb_position'
+            'symbol', 'score', 'score_pct', 'td_buy_count', 'td_sell_count', 'rsi', 'j', 'bb_position'
         ]].copy()
         
         # 可选：重命名列，更清晰
         df_display.columns = [
-            'Ticker', 'Score','TD Buy', 'TD Sell', 'RSI', 'KDJ-J', 'Bollinger%']
+            'Ticker', 'Score', 'Score in Percentile', 'TD Buy', 'TD Sell', 'RSI', 'KDJ-J', 'Bollinger%']
         
 
 
@@ -324,9 +324,9 @@ if st.button("📊 Analyze All", type="primary"):
             
             # 评分（左轴）
             ax1.plot(hist_plot.index, hist_plot['obos_score_pct'], color='red', linewidth=1.5)
-            ax1.set_ylabel('technical score percentile', color='red')
+            ax1.set_ylabel('Technical Score Percentile', color='red')
             ax1.tick_params(axis='y', labelcolor='red')
-            ax1.set_ylim(0, 1)
+            ax1.set_ylim(-0.1, 1.1)
             ax1.axhline(0.9, color='orange', linestyle='--', alpha=0.6)
             ax1.axhline(0.1, color='green', linestyle='--', alpha=0.6)
             ax1.grid(True, linestyle='--', alpha=0.3)
