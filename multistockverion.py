@@ -119,7 +119,7 @@ def analyze_single_stock(symbol, start, end,interval):
         def rolling_pct_rank(x):
             return pd.Series(x).rank(pct=True).iloc[-1]
         
-        df['obos_score_pct'] = df['obos_score'].rolling(window=60, min_periods=30).apply(
+        df['obos_score_zscore'] = df['obos_score'].rolling(window=60, min_periods=30).apply(
             rolling_pct_rank, raw=False
         )
         # 然后返回 'score_pct': float(latest['obos_score_pct'])
@@ -137,7 +137,7 @@ def analyze_single_stock(symbol, start, end,interval):
             'j': float(latest['j']),
             'bb_position': float(latest['bb_position']),
             'score': float(latest['obos_score']),
-            'score_zscore': float(latest['obos_score_pct']),  # ← 新增字段 either 'obos_score_pct' or 'obos_score_zscore'
+            'score_zscore': float(latest['obos_score_zscore']),  # ← 新增字段 either 'obos_score_pct' or 'obos_score_zscore'
             'td_buy': td_signal['buy'],
             'td_sell': td_signal['sell'],
             'td_buy_count': td_signal['buy_count'],
