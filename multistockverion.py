@@ -7,6 +7,7 @@ import pandas as pd
 from datetime import date
 import matplotlib.pyplot as plt
 import urllib.parse
+from scipy.stats import zscore
 
 def get_watchlist_from_url():
     """从 URL query 参数获取关注列表"""
@@ -108,6 +109,16 @@ def analyze_single_stock(symbol, start, end,interval):
         df = calculate_indicators(df)
         df['obos_score'] = calculate_obos_score(df)
         td_signal = check_td_nine(df)
+        def rolling_zscore_last(x):
+            if len(x) < 2:
+                return np.nan
+            zs = zscore(x, nan_policy='omit')
+            return zs[-1] if not np.isnan(zs[-1]) else np.nan
+        
+        # 使用过去 60 天作为窗口（可调整）
+        df['obos_score_zscore'] = df['obos_score'].rolling(window=60, min_periods=30).apply(
+            rolling_zscore_last, raw=False
+        )
         
         latest = df.iloc[-1]
         return {
@@ -117,11 +128,12 @@ def analyze_single_stock(symbol, start, end,interval):
             'j': float(latest['j']),
             'bb_position': float(latest['bb_position']),
             'score': float(latest['obos_score']),
+            'score_zscore': float(latest['obos_score_zscore']),  # ← 新增字段
             'td_buy': td_signal['buy'],
             'td_sell': td_signal['sell'],
             'td_buy_count': td_signal['buy_count'],
             'td_sell_count': td_signal['sell_count'],
-            'history': df[['Close', 'obos_score']].copy()
+            'history': df[['Close', 'obos_score','obos_score_zscore']].copy()
         }
     except Exception as e:
         st.warning(f"⚠️ {symbol} 分析失败: {str(e)[:60]}...")
@@ -306,12 +318,12 @@ if st.button("📊 Analyze All", type="primary"):
             fig, ax1 = plt.subplots(figsize=(10, 4))
             
             # 评分（左轴）
-            ax1.plot(hist_plot.index, hist_plot['obos_score'], color='red', linewidth=1.5)
-            ax1.set_ylabel('Score (0-100)', color='red')
+            ax1.plot(hist_plot.index, hist_plot['obos_score_zscore'], color='red', linewidth=1.5)
+            ax1.set_ylabel('Z-Score', color='red')
             ax1.tick_params(axis='y', labelcolor='red')
-            ax1.set_ylim(0, 100)
-            ax1.axhline(90, color='orange', linestyle='--', alpha=0.6)
-            ax1.axhline(10, color='green', linestyle='--', alpha=0.6)
+            ax1.set_ylim(-3, 3)
+            ax1.axhline(1.5, color='orange', linestyle='--', alpha=0.6)
+            ax1.axhline(-1.5, color='green', linestyle='--', alpha=0.6)
             ax1.grid(True, linestyle='--', alpha=0.3)
             
             # 股价（右轴）
