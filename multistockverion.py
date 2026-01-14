@@ -328,11 +328,11 @@ if st.button("📊 Analyze All", type="primary"):
             
             # 评分（左轴）
             ax1.plot(hist_plot.index, hist_plot['obos_score_zscore'], color='red', linewidth=1.5)
-            ax1.set_ylabel('Z-Score', color='red')
+            ax1.set_ylabel('technical score percentile', color='red')
             ax1.tick_params(axis='y', labelcolor='red')
-            ax1.set_ylim(-3, 3)
-            ax1.axhline(1.5, color='orange', linestyle='--', alpha=0.6)
-            ax1.axhline(-1.5, color='green', linestyle='--', alpha=0.6)
+            ax1.set_ylim(0, 1)
+            ax1.axhline(0.9, color='orange', linestyle='--', alpha=0.6)
+            ax1.axhline(0.1, color='green', linestyle='--', alpha=0.6)
             ax1.grid(True, linestyle='--', alpha=0.3)
             
             # 股价（右轴）
