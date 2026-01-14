@@ -119,16 +119,11 @@ def analyze_single_stock(symbol, start, end,interval):
         def rolling_pct_rank(x):
             return pd.Series(x).rank(pct=True).iloc[-1]
         
-        df['obos_score_zscore'] = df['obos_score'].rolling(window=60, min_periods=30).apply(
+        df['obos_score_pct'] = df['obos_score'].rolling(window=60, min_periods=30).apply(
             rolling_pct_rank, raw=False
         )
         # 然后返回 'score_pct': float(latest['obos_score_pct'])
-        '''
-        # 计算Zscore - 使用过去 60 天作为窗口（可调整）
-        df['obos_score_zscore'] = df['obos_score'].rolling(window=60, min_periods=30).apply(
-            rolling_zscore_last, raw=False
-        )
-        '''
+
         latest = df.iloc[-1]
         return {
             'symbol': symbol,
@@ -137,12 +132,12 @@ def analyze_single_stock(symbol, start, end,interval):
             'j': float(latest['j']),
             'bb_position': float(latest['bb_position']),
             'score': float(latest['obos_score']),
-            'score_zscore': float(latest['obos_score_zscore']),  # ← 新增字段 either 'obos_score_pct' or 'obos_score_zscore'
+            'score_pct': float(latest['obos_score_pct']),  # ← 新增字段 either 'obos_score_pct' or 'obos_score_pct'
             'td_buy': td_signal['buy'],
             'td_sell': td_signal['sell'],
             'td_buy_count': td_signal['buy_count'],
             'td_sell_count': td_signal['sell_count'],
-            'history': df[['Close', 'obos_score','obos_score_zscore']].copy()
+            'history': df[['Close', 'obos_score','obos_score_pct']].copy()
         }
     except Exception as e:
         st.warning(f"⚠️ {symbol} 分析失败: {str(e)[:60]}...")
@@ -179,6 +174,7 @@ st.markdown("""
 
 st.title("📊 Stock Scoring System")
 st.caption("0 = Extreme Oversold，100 = Extreme Overbought")
+st.caption("Instead of using the technical score directly, we use the rolling 60 days techncial score percentile (ranging from 0 to 1) to plot. This aims to address the problem of stocks in strong one-way trend having constantly a high/low score")
 
 # 初始化关注列表（从 URL 加载）
 if 'watchlist' not in st.session_state:
@@ -327,7 +323,7 @@ if st.button("📊 Analyze All", type="primary"):
             fig, ax1 = plt.subplots(figsize=(10, 4))
             
             # 评分（左轴）
-            ax1.plot(hist_plot.index, hist_plot['obos_score_zscore'], color='red', linewidth=1.5)
+            ax1.plot(hist_plot.index, hist_plot['obos_score_pct'], color='red', linewidth=1.5)
             ax1.set_ylabel('technical score percentile', color='red')
             ax1.tick_params(axis='y', labelcolor='red')
             ax1.set_ylim(0, 1)
