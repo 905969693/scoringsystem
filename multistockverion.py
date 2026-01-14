@@ -174,7 +174,7 @@ st.markdown("""
 
 st.title("📊 Stock Scoring System")
 st.caption("0 = Extreme Oversold，100 = Extreme Overbought")
-st.caption("Instead of using the technical score directly, we use the rolling 60 days techncial score percentile (ranging from 0 to 1) to plot. This aims to address the problem of stocks in strong one-way trend having constantly a high/low score")
+st.caption("In the charts below, apart from showing the technical score, we highlight the overnight/oversold area by using the rolling 60 days techncial score percentile (ranging from 0 to 1). This aims to address the problem of stocks in strong one-way trend having constantly a high/low score")
 
 # 初始化关注列表（从 URL 加载）
 if 'watchlist' not in st.session_state:
