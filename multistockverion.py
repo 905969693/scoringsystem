@@ -114,12 +114,21 @@ def analyze_single_stock(symbol, start, end,interval):
                 return np.nan
             zs = zscore(x, nan_policy='omit')
             return zs[-1] if not np.isnan(zs[-1]) else np.nan
+
+        # 替换上面的 Z-Score 计算部分为：
+        def rolling_pct_rank(x):
+            return pd.Series(x).rank(pct=True).iloc[-1]
         
-        # 使用过去 60 天作为窗口（可调整）
+        df['obos_score_pct'] = df['obos_score'].rolling(window=60, min_periods=30).apply(
+            rolling_pct_rank, raw=False
+        )
+        # 然后返回 'score_pct': float(latest['obos_score_pct'])
+        '''
+        # 计算Zscore - 使用过去 60 天作为窗口（可调整）
         df['obos_score_zscore'] = df['obos_score'].rolling(window=60, min_periods=30).apply(
             rolling_zscore_last, raw=False
         )
-        
+        '''
         latest = df.iloc[-1]
         return {
             'symbol': symbol,
@@ -128,7 +137,7 @@ def analyze_single_stock(symbol, start, end,interval):
             'j': float(latest['j']),
             'bb_position': float(latest['bb_position']),
             'score': float(latest['obos_score']),
-            'score_zscore': float(latest['obos_score_zscore']),  # ← 新增字段
+            'score_zscore': float(latest['obos_score_pct']),  # ← 新增字段 either 'obos_score_pct' or 'obos_score_zscore'
             'td_buy': td_signal['buy'],
             'td_sell': td_signal['sell'],
             'td_buy_count': td_signal['buy_count'],
