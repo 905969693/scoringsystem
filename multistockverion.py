@@ -174,7 +174,6 @@ st.markdown("""
 
 st.title("📊 Stock Scoring System")
 st.caption("0 = Extreme Oversold，100 = Extreme Overbought")
-st.caption("In the charts below, apart from showing the technical score, we highlight the overnight/oversold area by using the rolling 60 days techncial score percentile (ranging from 0 to 1). This aims to address the problem of stocks in strong one-way trend having constantly a high/low score")
 
 # 初始化关注列表（从 URL 加载）
 if 'watchlist' not in st.session_state:
@@ -307,7 +306,7 @@ if st.button("📊 Analyze All", type="primary"):
 
 
     
-    with st.expander("Check the Score & Price Trend of Each Ticker"):
+    with st.expander("Check the Score & Price Trend of Each Ticker. Apart from showing the technical score, we highlight the Overbought(red) / Oversold(green) area by using the rolling 60 days techncial score percentile (ranging from 0 to 1)"):
         for result in results:
             st.markdown(f"### {result['symbol']}")
             hist = result['history'].dropna()
