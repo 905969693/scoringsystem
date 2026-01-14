@@ -316,21 +316,31 @@ if st.button("📊 Analyze All", type="primary"):
                 st.write("⚠️ Not Enough Data (Need at least 10 data points)")
                 continue
             
-            #hist_plot = hist.tail(60)  这里只取了最后60个数据点
             
             hist_plot = hist #这里全都取了，试试看
             
             fig, ax1 = plt.subplots(figsize=(10, 4))
             
             # 评分（左轴）
-            ax1.plot(hist_plot.index, hist_plot['obos_score_pct'], color='red', linewidth=1.5)
-            ax1.set_ylabel('Technical Score Percentile', color='red')
+            ax1.plot(hist_plot.index, hist_plot['obos_score'], color='red', linewidth=1.5)
+            ax1.set_ylabel('Technical Score ', color='red')
             ax1.tick_params(axis='y', labelcolor='red')
-            ax1.set_ylim(-0.1, 1.1)
-            ax1.axhline(0.9, color='orange', linestyle='--', alpha=0.6)
-            ax1.axhline(0.1, color='green', linestyle='--', alpha=0.6)
+            ax1.set_ylim(0, 100)
+            ax1.axhline(90, color='orange', linestyle='--', alpha=0.6)
+            ax1.axhline(10, color='green', linestyle='--', alpha=0.6)
             ax1.grid(True, linestyle='--', alpha=0.3)
+
+            # 填充超买区域（pct > 0.9）
+            overbought = hist_plot['obos_score_pct'] > 0.9
+            ax1.fill_between(dates, 0, 100, where=overbought, 
+                             color='red', alpha=0.2, label='Overbought (pct > 0.9)')
+            dates = hist_plot.index
             
+            # 填充超卖区域（pct < 0.1）
+            oversold = hist_plot['obos_score_pct'] < 0.1
+            ax1.fill_between(dates, 0, 100, where=oversold, 
+                             color='green', alpha=0.2, label='Oversold (pct < 0.1)')
+                    
             # 股价（右轴）
             ax2 = ax1.twinx()
             ax2.plot(hist_plot.index, hist_plot['Close'], color='blue', linewidth=1.5)
