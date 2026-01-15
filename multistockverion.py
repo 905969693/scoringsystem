@@ -655,7 +655,7 @@ if st.button("📊 Analyze All", type="primary"):
         st.dataframe(display_df.style.format({
             'entry_price': "{:.2f}",
             'current_price': "{:.2f}",
-            'position %': "{:.0f}"
+            'position %': "{:.1%}"
         }))
     else:
         st.info("📭 回测结束时无持仓")
