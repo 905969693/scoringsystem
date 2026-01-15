@@ -641,10 +641,21 @@ if st.button("📊 Analyze All", type="primary"):
             if sym in stock_data_dict else "N/A"
         )
         pos_df['current_MV'] = pos_df['shares'] * pos_df['current_price']
-        st.dataframe(pos_df.style.format({
+        # 计算总持仓市值（不含现金）
+        total_position_value = pos_df['current_MV'].sum()
+        
+        # 计算占比（百分比）
+        pos_df['position %'] = pos_df['current_MV'] / total_position_value if total_position_value > 0 else 0.0
+        
+        # 只显示需要的列
+        display_df = pos_df[['shares', 'entry_price', 'current_price', 'position %']].copy()
+    
+
+        
+        st.dataframe(display_df.style.format({
             'entry_price': "{:.2f}",
             'current_price': "{:.2f}",
-            'current_MV': "{:.0f}"
+            'position %': "{:.0f}"
         }))
     else:
         st.info("📭 回测结束时无持仓")
