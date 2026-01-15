@@ -628,6 +628,8 @@ if st.button("📊 Analyze All", type="primary"):
     # === 3. 当前持仓（表格形式，更清晰）===
     st.subheader("💼 Current Holdings")
     final_positions = result_backtest['final_positions']
+
+    stock_data_dict = result_backtest['stock_data_dict']
     
     if final_positions:
         # 转换为 DataFrame 便于展示
