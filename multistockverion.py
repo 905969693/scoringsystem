@@ -329,7 +329,8 @@ def run_full_backtest(symbols, start_date, end_date, params=None):
         'trades': trades,
         'final_positions': final_positions,
         'performance': perf,
-        'figure': fig
+        'figure': fig,
+        'stock_data_dict': stock_data_dict 
     }
 
 #### 以上是回测代码部分####
@@ -614,11 +615,11 @@ if st.button("📊 Analyze All", type="primary"):
     perf = result_backtest['performance']
     col1, col2, col3 = st.columns(3)
     with col1:
-        st.metric("总收益 (Total Return)", f"{perf['total_return']:.1%}")
+        st.metric("Total Return", f"{perf['total_return']:.1%}")
     with col2:
-        st.metric("夏普比率 (Sharpe Ratio)", f"{perf['sharpe_ratio']:.2f}")
+        st.metric("Sharpe Ratio", f"{perf['sharpe_ratio']:.2f}")
     with col3:
-        st.metric("最大回撤 (Max Drawdown)", f"{perf['max_drawdown']:.1%}")
+        st.metric("Max Drawdown", f"{perf['max_drawdown']:.1%}")
     
     # === 2. 净值曲线图 ===
     st.subheader("📊 NAV Plot")
