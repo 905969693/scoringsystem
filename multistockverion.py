@@ -637,7 +637,7 @@ if st.button("📊 Analyze All", type="primary"):
         pos_df.index.name = 'Ticker'
         pos_df = pos_df.rename(columns={'shares': 'shares', 'entry_price': 'Entry Price'})
         pos_df['current_price'] = pos_df.index.map(
-            lambda sym: stock_data_dict[sym].iloc[-1]['Close'] 
+            lambda sym: stock_data_dict[sym].iloc[-1]['Close'].iloc[0] 
             if sym in stock_data_dict else "N/A"
         )
         pos_df['current_MV'] = pos_df['shares'] * pos_df['current_price']
