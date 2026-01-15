@@ -635,7 +635,7 @@ if st.button("📊 Analyze All", type="primary"):
         # 转换为 DataFrame 便于展示
         pos_df = pd.DataFrame.from_dict(final_positions, orient='index')
         pos_df.index.name = 'Ticker'
-        pos_df = pos_df.rename(columns={'shares': 'shares', 'entry_price': 'Entry Price'})
+        pos_df = pos_df.rename(columns={'shares': 'shares', 'entry_price': 'entry_price'})
         pos_df['current_price'] = pos_df.index.map(
             lambda sym: stock_data_dict[sym].iloc[-1]['Close'].iloc[0] 
             if sym in stock_data_dict else "N/A"
