@@ -8,6 +8,288 @@ from datetime import date
 import matplotlib.pyplot as plt
 import urllib.parse
 from scipy.stats import zscore
+from scipy.stats import percentileofscore
+
+class StrategyParams:
+    def __init__(self,
+                 lookback_window=60,
+                 signal_threshold_low=0.10,
+                 signal_threshold_high=0.90,
+                 consecutive_days=2,
+                 max_position_per_stock=0.15,  # 单票最大仓位比例
+                 total_capital=1_000_000,
+                 commission_rate=0.001,        # 佣金率
+                 risk_free_rate=0.02):         # 年化无风险利率
+        self.lookback_window = lookback_window
+        self.signal_threshold_low = signal_threshold_low
+        self.signal_threshold_high = signal_threshold_high
+        self.consecutive_days = consecutive_days
+        self.max_position_per_stock = max_position_per_stock
+        self.total_capital = total_capital
+        self.commission_rate = commission_rate
+        self.risk_free_rate = risk_free_rate
+
+def run_backtest(stock_data_dict, params):
+    """
+    执行回测
+    
+    Parameters:
+    - stock_data_dict: dict {symbol: DataFrame}，每个 DataFrame 必须包含 'Close' 和 'score_percentile'
+    - params: StrategyParams 实例
+    
+    Returns:
+    - portfolio_history: DataFrame (date, value, cash)
+    - trades_log: list of trade records
+    - positions_log: dict {symbol: [position records]}
+    """
+    # === 1. 对齐所有股票的日期索引 ===
+    all_dates = sorted(set().union(*[df.index for df in stock_data_dict.values()]))
+    symbols = list(stock_data_dict.keys())
+    
+    # 初始化信号计数器
+    signal_count = {sym: {'buy': 0, 'sell': 0} for sym in symbols}
+    
+    # 初始化投资组合
+    portfolio = {
+        'cash': float(params.total_capital),
+        'positions': {},  # sym -> {'shares': int, 'entry_price': float}
+        'history': [],
+        'trades': []
+    }
+    
+    # === 2. 主回测循环 ===
+    for i, date in enumerate(all_dates):
+        # --- 2.1 更新当前持仓市值 ---
+        current_value = portfolio['cash']
+        for sym, pos in portfolio['positions'].items():
+            if date in stock_data_dict[sym].index:
+                price = stock_data_dict[sym].loc[date, 'Close']
+                current_value += pos['shares'] * price
+        
+        portfolio['history'].append({
+            'date': date,
+            'value': current_value,
+            'cash': portfolio['cash']
+        })
+        
+        # --- 2.2 检查当日信号（仅在有数据的股票上）---
+        buy_signals = []
+        sell_signals = []
+        
+        for sym in symbols:
+            if date not in stock_data_dict[sym].index:
+                continue
+                
+            pct = stock_data_dict[sym].loc[date, 'score_percentile']
+            
+            # 更新信号计数
+            if pct < params.signal_threshold_low:
+                signal_count[sym]['buy'] += 1
+                signal_count[sym]['sell'] = 0  # 重置反向计数
+            elif pct > params.signal_threshold_high:
+                signal_count[sym]['sell'] += 1
+                signal_count[sym]['buy'] = 0
+            else:
+                signal_count[sym]['buy'] = 0
+                signal_count[sym]['sell'] = 0
+            
+            # 判断是否触发信号
+            if signal_count[sym]['buy'] >= params.consecutive_days:
+                buy_signals.append(sym)
+            if signal_count[sym]['sell'] >= params.consecutive_days:
+                sell_signals.append(sym)
+        
+        # --- 2.3 先处理卖出（释放资金）---
+        for sym in sell_signals:
+            if sym in portfolio['positions']:
+                shares = portfolio['positions'][sym]['shares']
+                price = stock_data_dict[sym].loc[date, 'Close']
+                proceeds = shares * price
+                commission = proceeds * params.commission_rate
+                portfolio['cash'] += proceeds - commission
+                
+                portfolio['trades'].append({
+                    'date': date,
+                    'symbol': sym,
+                    'action': 'SELL',
+                    'shares': shares,
+                    'price': price,
+                    'commission': commission
+                })
+                
+                del portfolio['positions'][sym]
+        
+        # --- 2.4 再处理买入（使用当前可用现金）---
+        if buy_signals:
+            # 计算每只股票可分配的最大金额
+            max_per_stock = params.total_capital * params.max_position_per_stock
+            alloc_per_stock = min(portfolio['cash'] / len(buy_signals), max_per_stock)
+            
+            for sym in buy_signals:
+                if sym not in portfolio['positions']:  # 避免重复买入
+                    price = stock_data_dict[sym].loc[date, 'Close']
+                    amount_to_invest = min(alloc_per_stock, portfolio['cash'])
+                    
+                    if amount_to_invest > price:  # 至少买1股
+                        shares = int(amount_to_invest // price)
+                        cost = shares * price
+                        commission = cost * params.commission_rate
+                        total_cost = cost + commission
+                        
+                        if total_cost <= portfolio['cash']:
+                            portfolio['cash'] -= total_cost
+                            portfolio['positions'][sym] = {
+                                'shares': shares,
+                                'entry_price': price
+                            }
+                            
+                            portfolio['trades'].append({
+                                'date': date,
+                                'symbol': sym,
+                                'action': 'BUY',
+                                'shares': shares,
+                                'price': price,
+                                'commission': commission
+                            })
+    
+    # === 3. 转换历史记录为 DataFrame ===
+    history_df = pd.DataFrame(portfolio['history']).set_index('date')
+    return history_df, portfolio['trades'], portfolio['positions']
+
+def prepare_stock_data_dict(symbols, start_date, end_date, interval="1d"):
+    """
+    为回测准备数据字典
+    
+    Returns:
+        dict: {symbol: DataFrame with columns ['Close', 'obos_score', 'score_percentile']}
+    """
+
+    
+    stock_data_dict = {}
+    
+    for sym in symbols:
+        try:
+            # 1. 获取完整历史数据（一次下载）
+            df = fetch_stock_data(sym, start=start_date, end=end_date, interval=interval)
+            if df.empty:
+                continue
+            
+            # 2. 计算技术指标和 OBO Score
+            df = calculate_indicators(df)
+            df['obos_score'] = calculate_obos_score(df)
+            
+            # 3. 计算滚动 score_percentile（过去60天）
+            def rolling_pct(x):
+                return percentileofscore(x, x.iloc[-1], kind='mean') / 100.0
+            
+            df['score_percentile'] = df['obos_score'].rolling(window=60, min_periods=30).apply(
+                rolling_pct, raw=False
+            )
+            
+            # 4. 保留必要列
+            stock_data_dict[sym] = df[['Close', 'obos_score', 'score_percentile']].copy()
+            
+        except Exception as e:
+            print(f"⚠️ 跳过 {sym}: {str(e)[:60]}")
+            continue
+    
+    return stock_data_dict
+
+def calculate_performance(portfolio_history, params):
+    """计算绩效指标"""
+    # 净值序列
+    nav = portfolio_history['value'] / params.total_capital
+    
+    # 总收益
+    total_return = nav.iloc[-1] - 1.0
+    
+    # 日收益率
+    daily_returns = nav.pct_change().dropna()
+    
+    # 年化夏普比率（假设252交易日）
+    annualized_return = daily_returns.mean() * 252
+    annualized_vol = daily_returns.std() * np.sqrt(252)
+    sharpe = (annualized_return - params.risk_free_rate) / annualized_vol if annualized_vol != 0 else 0
+    
+    # 最大回撤
+    rolling_max = nav.cummax()
+    drawdown = (nav - rolling_max) / rolling_max
+    max_drawdown = drawdown.min()
+    dd_start = drawdown.idxmin()
+    dd_peak = rolling_max[:dd_start].idxmax()
+    dd_end = nav[dd_start:].idxmax()
+    
+    return {
+        'total_return': total_return,
+        'sharpe_ratio': sharpe,
+        'max_drawdown': max_drawdown,
+        'drawdown_period': (dd_peak, dd_start, dd_end),
+        'daily_returns': daily_returns,
+        'nav': nav
+    }
+
+
+def plot_performance(perf_result, title="Strategy Performance"):
+    """绘制净值曲线与最大回撤"""
+    nav = perf_result['nav']
+    dd_start, dd_end = perf_result['drawdown_period'][1], perf_result['drawdown_period'][2]
+    
+    fig, ax = plt.subplots(figsize=(12, 6))
+    
+    # 净值曲线
+    ax.plot(nav.index, nav, label='Portfolio NAV', color='blue')
+    ax.axhline(1.0, color='black', linestyle='--', linewidth=0.8)
+    
+    # 最大回撤区间填充
+    ax.fill_between(
+        [dd_start, dd_end],
+        nav.loc[dd_start:dd_end],
+        nav.loc[dd_start:dd_end].cummax(),
+        color='red', alpha=0.3, label=f'Max Drawdown ({perf_result["max_drawdown"]:.1%})'
+    )
+    
+    # 标注信息
+    ax.set_title(f"{title}\nTotal Return: {perf_result['total_return']:.1%} | "
+                 f"Sharpe: {perf_result['sharpe_ratio']:.2f} | "
+                 f"Max DD: {perf_result['max_drawdown']:.1%}")
+    ax.set_ylabel("Normalized Value")
+    ax.legend()
+    ax.grid(True, linestyle='--', alpha=0.5)
+    
+    plt.tight_layout()
+    return fig
+
+# ==============================
+# 回测主入口函数（供你调用）
+# ==============================
+def run_full_backtest(symbols, start_date, end_date, params=None):
+    """
+    完整回测流程：数据准备 → 回测 → 绩效 → 返回结果
+    """
+    if params is None:
+        params = StrategyParams()
+    
+    print("📥 Loading Data...")
+    stock_data_dict = prepare_stock_data_dict(symbols, start_date, end_date)
+    print(f"✅ Loaded {len(stock_data_dict)} Stocks")
+    
+    print("⚙️ Backtesting...")
+    history, trades, final_positions = run_backtest(stock_data_dict, params)
+    
+    print("📊 Performance...")
+    perf = calculate_performance(history, params)
+    
+    print("📈 Charts...")
+    fig = plot_performance(perf)
+    
+    return {
+        'portfolio_history': history,
+        'trades': trades,
+        'final_positions': final_positions,
+        'performance': perf,
+        'figure': fig
+    }
+
 
 def get_watchlist_from_url():
     """从 URL query 参数获取关注列表"""
@@ -143,6 +425,11 @@ def analyze_single_stock(symbol, start, end,interval):
         st.warning(f"⚠️ {symbol} 分析失败: {str(e)[:60]}...")
         return None
 
+
+
+
+
+
 # ========== Streamlit 界面 ==========
 st.set_page_config(page_title="Stock Scoring System", layout="wide")
 
@@ -262,6 +549,25 @@ if st.button("📊 Analyze All", type="primary"):
     start_date = pd.to_datetime(end_date) - pd.DateOffset(months=months_back)
     start_str = start_date.strftime("%Y-%m-%d")
     end_str = (pd.to_datetime(end_date) + pd.Timedelta(days=1)).strftime("%Y-%m-%d")
+
+    # 回测代码：
+
+    #start = "2025-01-01"
+    #end = "2026-01-15"
+    
+    params = StrategyParams(
+        consecutive_days=2,
+        max_position_per_stock=0.20,
+        total_capital=1_000_000
+    )
+    
+    result_backtest = run_full_backtest(symbols, start_str, end_str, params)
+    # 输出结果
+    print(f"PNL: {result_backtest['performance']['total_return']:.1%}")
+    print(f"Sharpe: {result_backtest['performance']['sharpe_ratio']:.2f}")
+    print("Current Holdings:", result_backtest['final_positions'])
+
+    st.pyplot(result_backtest['figure'])
     
     # 分析所有股票
     results = []
