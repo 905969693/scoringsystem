@@ -10,6 +10,8 @@ import urllib.parse
 from scipy.stats import zscore
 from scipy.stats import percentileofscore
 
+
+####以下是回测代码部分####
 class StrategyParams:
     def __init__(self,
                  lookback_window=60,
@@ -43,7 +45,11 @@ def run_backtest(stock_data_dict, params):
     - positions_log: dict {symbol: [position records]}
     """
     # === 1. 对齐所有股票的日期索引 ===
-    all_dates = sorted(set().union(*[df.index for df in stock_data_dict.values()]))
+    all_dates = set()
+    for df in stock_data_dict.values():
+        all_dates.update(df.index)  # df.index 已是 DatetimeIndex
+    all_dates = sorted(pd.to_datetime(list(all_dates)))  # 确保是 Timestamp 列表
+
     symbols = list(stock_data_dict.keys())
     
     # 初始化信号计数器
@@ -58,12 +64,26 @@ def run_backtest(stock_data_dict, params):
     }
     
     # === 2. 主回测循环 ===
-    for i, date in enumerate(all_dates):
+    for date in all_dates:
+        
+    
+        # === 新增：确保 date 是标量 Timestamp ===
+        if not isinstance(date, pd.Timestamp):
+            continue
+        if pd.isna(date):
+            continue
+        # ======================================
+
+        
         # --- 2.1 更新当前持仓市值 ---
         current_value = portfolio['cash']
         for sym, pos in portfolio['positions'].items():
             if date in stock_data_dict[sym].index:
-                price = stock_data_dict[sym].loc[date, 'Close']
+                try:
+                    price = stock_data_dict[sym].loc[date, 'Close'].iloc[0]
+                except Exception as e:
+                    print(f"⚠️ Price access error for {sym} on {date}: {e}")
+                    continue
                 current_value += pos['shares'] * price
         
         portfolio['history'].append({
@@ -79,8 +99,16 @@ def run_backtest(stock_data_dict, params):
         for sym in symbols:
             if date not in stock_data_dict[sym].index:
                 continue
-                
-            pct = stock_data_dict[sym].loc[date, 'score_percentile']
+        
+            try:
+                pct = stock_data_dict[sym].loc[date, 'score_percentile']
+            except Exception as e:
+                print('date',date)
+                print('stock_data_dict[sym]',stock_data_dict[sym])
+                print(f"⚠️ Percentile access error for {sym} on {date}: {e}")
+                continue
+            #pct = stock_data_dict[sym].at[date, 'score_percentile']
+            pct = float(pct.iloc[0])  # 直接转 float，若 Series 会报错，但可提前暴露问题
             
             # 更新信号计数
             if pct < params.signal_threshold_low:
@@ -103,7 +131,7 @@ def run_backtest(stock_data_dict, params):
         for sym in sell_signals:
             if sym in portfolio['positions']:
                 shares = portfolio['positions'][sym]['shares']
-                price = stock_data_dict[sym].loc[date, 'Close']
+                price = stock_data_dict[sym].loc[date, 'Close'].iloc[0]
                 proceeds = shares * price
                 commission = proceeds * params.commission_rate
                 portfolio['cash'] += proceeds - commission
@@ -127,8 +155,8 @@ def run_backtest(stock_data_dict, params):
             
             for sym in buy_signals:
                 if sym not in portfolio['positions']:  # 避免重复买入
-                    price = stock_data_dict[sym].loc[date, 'Close']
-                    amount_to_invest = min(alloc_per_stock, portfolio['cash'])
+                    price = float(stock_data_dict[sym].loc[date, 'Close'].iloc[0])
+                    amount_to_invest = float(min(alloc_per_stock, portfolio['cash']))
                     
                     if amount_to_invest > price:  # 至少买1股
                         shares = int(amount_to_invest // price)
@@ -157,55 +185,63 @@ def run_backtest(stock_data_dict, params):
     return history_df, portfolio['trades'], portfolio['positions']
 
 def prepare_stock_data_dict(symbols, start_date, end_date, interval="1d"):
-    """
-    为回测准备数据字典
-    
-    Returns:
-        dict: {symbol: DataFrame with columns ['Close', 'obos_score', 'score_percentile']}
-    """
-
-    
     stock_data_dict = {}
-    
     for sym in symbols:
         try:
-            # 1. 获取完整历史数据（一次下载）
             df = fetch_stock_data(sym, start=start_date, end=end_date, interval=interval)
-            if df.empty:
+            if df.empty or len(df) < 30:
                 continue
-            
-            # 2. 计算技术指标和 OBO Score
+
+            # === 关键：标准化索引 ===
+            df.index = pd.to_datetime(df.index)  # 转为 datetime
+            df.index = df.index.tz_localize(None)  # 去掉时区（yfinance 常带 UTC）
+            df = df[~df.index.duplicated(keep='first')].sort_index()
+            # ======================
+
             df = calculate_indicators(df)
             df['obos_score'] = calculate_obos_score(df)
-            
-            # 3. 计算滚动 score_percentile（过去60天）
+
+            # 截断 NaN
+            first_valid = df['obos_score'].first_valid_index()
+            if pd.isna(first_valid):
+                continue
+            df = df.loc[first_valid:].copy()
+
             def rolling_pct(x):
                 return percentileofscore(x, x.iloc[-1], kind='mean') / 100.0
-            
-            df['score_percentile'] = df['obos_score'].rolling(window=60, min_periods=30).apply(
-                rolling_pct, raw=False
-            )
-            
-            # 4. 保留必要列
+
+            df['score_percentile'] = df['obos_score'].rolling(
+                window=60, min_periods=30
+            ).apply(rolling_pct, raw=False)
+
+            # 在计算完 score_percentile 后
+            df['score_percentile'] = pd.to_numeric(df['score_percentile'], errors='coerce')
+            df['obos_score'] = pd.to_numeric(df['obos_score'], errors='coerce')
+
+            first_valid_pct = df['score_percentile'].first_valid_index()
+            if pd.isna(first_valid_pct):
+                continue
+            df = df.loc[first_valid_pct:].copy()
+
             stock_data_dict[sym] = df[['Close', 'obos_score', 'score_percentile']].copy()
-            
+
         except Exception as e:
             print(f"⚠️ 跳过 {sym}: {str(e)[:60]}")
             continue
-    
+
     return stock_data_dict
+
 
 def calculate_performance(portfolio_history, params):
     """计算绩效指标"""
     # 净值序列
     nav = portfolio_history['value'] / params.total_capital
-    
+
     # 总收益
     total_return = nav.iloc[-1] - 1.0
     
     # 日收益率
     daily_returns = nav.pct_change().dropna()
-    
     # 年化夏普比率（假设252交易日）
     annualized_return = daily_returns.mean() * 252
     annualized_vol = daily_returns.std() * np.sqrt(252)
@@ -230,32 +266,38 @@ def calculate_performance(portfolio_history, params):
 
 
 def plot_performance(perf_result, title="Strategy Performance"):
-    """绘制净值曲线与最大回撤"""
     nav = perf_result['nav']
-    dd_start, dd_end = perf_result['drawdown_period'][1], perf_result['drawdown_period'][2]
+    _, dd_start, dd_end = perf_result['drawdown_period']
     
     fig, ax = plt.subplots(figsize=(12, 6))
-    
-    # 净值曲线
-    ax.plot(nav.index, nav, label='Portfolio NAV', color='blue')
+    ax.plot(nav.index, nav, color='blue', label='Portfolio NAV')
     ax.axhline(1.0, color='black', linestyle='--', linewidth=0.8)
     
-    # 最大回撤区间填充
-    ax.fill_between(
-        [dd_start, dd_end],
-        nav.loc[dd_start:dd_end],
-        nav.loc[dd_start:dd_end].cummax(),
-        color='red', alpha=0.3, label=f'Max Drawdown ({perf_result["max_drawdown"]:.1%})'
-    )
+    # === 修复：提取回撤区间内的完整 x 和 y ===
+    if pd.notna(dd_start) and pd.notna(dd_end):
+        # 确保 dd_end >= dd_start
+        mask = (nav.index >= dd_start) & (nav.index <= dd_end)
+        if mask.any():
+            x_fill = nav.index[mask]
+            y_fill = nav[mask]
+            y_cummax = y_fill.cummax()
+            
+            ax.fill_between(
+                x_fill,
+                y_fill,
+                y_cummax,
+                color='red', alpha=0.3,
+                label=f'Max Drawdown ({perf_result["max_drawdown"]:.1%})'
+            )
+    # ======================================
     
-    # 标注信息
-    ax.set_title(f"{title}\nTotal Return: {perf_result['total_return']:.1%} | "
+    ax.set_title(f"{title}\n"
+                 f"Total Return: {perf_result['total_return']:.1%} | "
                  f"Sharpe: {perf_result['sharpe_ratio']:.2f} | "
                  f"Max DD: {perf_result['max_drawdown']:.1%}")
-    ax.set_ylabel("Normalized Value")
+    ax.set_ylabel("Normalized Value (Base=1.0)")
     ax.legend()
     ax.grid(True, linestyle='--', alpha=0.5)
-    
     plt.tight_layout()
     return fig
 
@@ -281,7 +323,7 @@ def run_full_backtest(symbols, start_date, end_date, params=None):
     
     print("📈 Charts...")
     fig = plot_performance(perf)
-    
+
     return {
         'portfolio_history': history,
         'trades': trades,
@@ -290,6 +332,7 @@ def run_full_backtest(symbols, start_date, end_date, params=None):
         'figure': fig
     }
 
+#### 以上是回测代码部分####
 
 def get_watchlist_from_url():
     """从 URL query 参数获取关注列表"""
@@ -550,24 +593,64 @@ if st.button("📊 Analyze All", type="primary"):
     start_str = start_date.strftime("%Y-%m-%d")
     end_str = (pd.to_datetime(end_date) + pd.Timedelta(days=1)).strftime("%Y-%m-%d")
 
-    # 回测代码：
+    # #####回测代码： ######
 
-    #start = "2025-01-01"
-    #end = "2026-01-15"
-    
+    #回测相关内容输出#
     params = StrategyParams(
         consecutive_days=2,
+        signal_threshold_low=0.10,
+        signal_threshold_high=0.90,
         max_position_per_stock=0.20,
-        total_capital=1_000_000
+        total_capital=1_000_000,
+        commission_rate=0.001
+    
     )
     
-    result_backtest = run_full_backtest(symbols, start_str, end_str, params)
-    # 输出结果
-    print(f"PNL: {result_backtest['performance']['total_return']:.1%}")
-    print(f"Sharpe: {result_backtest['performance']['sharpe_ratio']:.2f}")
-    print("Current Holdings:", result_backtest['final_positions'])
 
+    # 运行回测
+    result_backtest = run_full_backtest(symbols, start_str, end_str, params)
+    
+    # === 1. 绩效指标（使用 st.metric，美观且突出）===
+    perf = result_backtest['performance']
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("总收益 (Total Return)", f"{perf['total_return']:.1%}")
+    with col2:
+        st.metric("夏普比率 (Sharpe Ratio)", f"{perf['sharpe_ratio']:.2f}")
+    with col3:
+        st.metric("最大回撤 (Max Drawdown)", f"{perf['max_drawdown']:.1%}")
+    
+    # === 2. 净值曲线图 ===
+    st.subheader("📊 NAV Plot")
     st.pyplot(result_backtest['figure'])
+    
+    # === 3. 当前持仓（表格形式，更清晰）===
+    st.subheader("💼 Current Holdings")
+    final_positions = result_backtest['final_positions']
+    
+    if final_positions:
+        # 转换为 DataFrame 便于展示
+        pos_df = pd.DataFrame.from_dict(final_positions, orient='index')
+        pos_df.index.name = 'Ticker'
+        pos_df = pos_df.rename(columns={'shares': 'shares', 'entry_price': 'Entry Price'})
+        pos_df['current_price'] = pos_df.index.map(
+            lambda sym: stock_data_dict[sym].iloc[-1]['Close'] 
+            if sym in stock_data_dict else "N/A"
+        )
+        pos_df['current_MV'] = pos_df['shares'] * pos_df['current_price']
+        st.dataframe(pos_df.style.format({
+            'entry_price': "{:.2f}",
+            'current_price': "{:.2f}",
+            'current_MV': "{:.0f}"
+        }))
+    else:
+        st.info("📭 回测结束时无持仓")
+    
+    # === 4. （可选）交易记录 ===
+    # st.subheader("📜 最近交易记录")
+    # trades_df = pd.DataFrame(result_backtest['trades'])
+    # if not trades_df.empty:
+    #     st.dataframe(trades_df.tail(10))
     
     # 分析所有股票
     results = []
