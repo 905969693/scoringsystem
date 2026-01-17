@@ -757,7 +757,7 @@ if st.button("📊 Analyze All", type="primary"):
         st.subheader(f"📈 Result ( {len(results)} Stocks)")
         st.dataframe(df_display, use_container_width=True, height=500)
 
-    st.caption("Check the Score & Price Trend of Each Ticker. Apart from showing the technical score, we highlight the Overbought(red) / Oversold(green) area by using the rolling 60 days techncial score percentile (ranging from 0 to 1)"):
+    st.caption("Check the Score & Price Trend of Each Ticker. Apart from showing the technical score, we highlight the Overbought(red) / Oversold(green) area by using the rolling 60 days techncial score percentile (ranging from 0 to 1)")
     for result in results:
         st.markdown(f"### {result['symbol']}")
         hist = result['history'].dropna()
