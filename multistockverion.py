@@ -18,11 +18,12 @@ class StrategyParams:
                  signal_threshold_low=0.10,
                  signal_threshold_high=0.90,
                  consecutive_days=2,
-                 max_position_per_stock=0.15,  # 单票最大仓位比例（占权益）
+                 max_position_per_stock=0.15,
                  total_capital=1_000_000,
-                 commission_rate=0.000,        # 佣金率
-                 risk_free_rate=0.02,          # 年化无风险利率
-                 max_gross_exposure=2.0):      # 最大总杠杆（多+空 ≤ 2.0 × equity）
+                 commission_rate=0.001,
+                 risk_free_rate=0.02,
+                 max_gross_exposure=2.0,
+                 allow_shorting=False):  # ← 新增开关，默认开启
         self.lookback_window = lookback_window
         self.signal_threshold_low = signal_threshold_low
         self.signal_threshold_high = signal_threshold_high
@@ -32,6 +33,7 @@ class StrategyParams:
         self.commission_rate = commission_rate
         self.risk_free_rate = risk_free_rate
         self.max_gross_exposure = max_gross_exposure
+        self.allow_shorting = allow_shorting  # ← 新增
 
 def run_backtest(stock_data_dict, params):
     """
@@ -203,7 +205,7 @@ def run_backtest(stock_data_dict, params):
                         })
         
         # 处理卖出/做空
-        if sell_signals:
+        if params.allow_shorting and sell_signals:
             for sym in sell_signals:
                 if sym in portfolio['positions'] and portfolio['positions'][sym]['shares'] > 0:
                     continue  # 应已平多，安全跳过
