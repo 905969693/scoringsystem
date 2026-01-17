@@ -684,46 +684,54 @@ if st.button("📊 Analyze All", type="primary"):
     # === 3. 当前持仓（表格形式，更清晰）===
     st.subheader("💼 Current Holdings")
     final_positions = result_backtest['final_positions']
-
     stock_data_dict = result_backtest['stock_data_dict']
     
     if final_positions:
-        # 转换为 DataFrame 便于展示
         pos_df = pd.DataFrame.from_dict(final_positions, orient='index')
         pos_df.index.name = 'Ticker'
-        pos_df = pos_df.rename(columns={'shares': 'shares', 'entry_price': 'entry_price'})
-        pos_df['current_price'] = pos_df.index.map(
-            lambda sym: stock_data_dict[sym].iloc[-1]['Close']
-            if sym in stock_data_dict else "N/A"
-        )
+        
+        # --- 安全提取当前价格（全部转为 float）---
+        current_prices = []
+        for sym in pos_df.index:
+            if sym in stock_data_dict and len(stock_data_dict[sym]) > 0:
+                price_val = stock_data_dict[sym].iloc[-1]['Close']
+                if isinstance(price_val, pd.Series):
+                    price_val = price_val.iloc[-1]
+                try:
+                    current_prices.append(float(price_val))
+                except (TypeError, ValueError):
+                    current_prices.append(np.nan)
+            else:
+                current_prices.append(np.nan)
+        
+        # --- 强制所有列为 float64 ---
+        pos_df['shares'] = pd.to_numeric(pos_df['shares'], errors='coerce')
+        pos_df['entry_price'] = pd.to_numeric(pos_df['entry_price'], errors='coerce')
+        pos_df['current_price'] = pd.to_numeric(current_prices, errors='coerce')
+        
+        # 计算市值（现在全是 float）
         pos_df['current_MV'] = pos_df['shares'] * pos_df['current_price']
-        # 计算总持仓市值（不含现金）
-        total_position_value = pos_df['current_MV'].abs().sum()  # 注意：空头市值取绝对值
         
-        # 计算占总仓位（equity）的百分比
-        total_equity = result_backtest['portfolio_history']['value'].iloc[-1]
-        
-        # 安全计算 position %
-        if total_equity > 0:
-            pos_pct = pos_df['current_MV'].abs() / total_equity
+        # 计算占总权益百分比
+        total_equity = float(result_backtest['portfolio_history']['value'].iloc[-1])
+        if total_equity != 0:
+            pos_df['position %'] = pos_df['current_MV'].abs() / abs(total_equity)
         else:
-            pos_pct = pd.Series([0.0] * len(pos_df), index=pos_df.index)
+            pos_df['position %'] = 0.0
         
-        # 强制转为 float，并填充 NaN 为 0.0
-        pos_df['position %'] = pd.to_numeric(pos_pct, errors='coerce').fillna(0.0)
-
-    
-        # 只显示需要的列
+        # --- 再次确保是数值型 ---
+        for col in ['shares', 'entry_price', 'current_price', 'position %']:
+            pos_df[col] = pd.to_numeric(pos_df[col], errors='coerce').fillna(0.0)
+        
         display_df = pos_df[['shares', 'entry_price', 'current_price', 'position %']].copy()
-        #在下面不显示'position %': "{:.1%}"
-        '''
+        
+        # 格式化（现在绝对安全）
         st.dataframe(display_df.style.format({
-            'shares': "{:+,.0f}",      # 显示 +100 / -50
+            'shares': "{:+,.0f}",
             'entry_price': "{:.2f}",
-            'current_price': "{:.2f}"
-            
+            'current_price': "{:.2f}",
+            'position %': "{:.1%}"
         }))
-        '''
     else:
         st.info("📭 回测结束时无持仓")
     
