@@ -676,38 +676,38 @@ if st.button("📊 Analyze All", type="primary"):
         st.subheader(f"📈 Result ( {len(results)} Stocks)")
         st.dataframe(df_display, use_container_width=True, height=500)
 
-    st.caption("Check the Score & Price Trend of Each Ticker. Apart from showing the technical score, we highlight the Overbought(red) / Oversold(green) area by using the rolling 60 days techncial score percentile (ranging from 0 to 1)")
-    for result in results:
-        st.markdown(f"### {result['symbol']}")
-        hist = result['history'].dropna()
-        if len(hist) < 10:
-            st.write("⚠️ Not Enough Data (Need at least 10 data points)")
-            continue
-        hist_plot = hist
-        fig, ax1 = plt.subplots(figsize=(10, 4))
-        ax1.plot(hist_plot.index, hist_plot['obos_score'], color='red', linewidth=1.5)
-        ax1.set_ylabel('Technical Score ', color='red')
-        ax1.tick_params(axis='y', labelcolor='red')
-        ax1.set_ylim(0, 100)
-        ax1.axhline(90, color='orange', linestyle='--', alpha=0.6)
-        ax1.axhline(10, color='green', linestyle='--', alpha=0.6)
-        ax1.grid(True, linestyle='--', alpha=0.3)
-        dates = hist_plot.index
-        overbought = hist_plot['obos_score_pct'] > 0.9
-        ax1.fill_between(dates, 0, 100, where=overbought, 
-                         color='red', alpha=0.2, label='Overbought (pct > 0.9)')
-        oversold = hist_plot['obos_score_pct'] < 0.1
-        ax1.fill_between(dates, 0, 100, where=oversold, 
-                         color='green', alpha=0.2, label='Oversold (pct < 0.1)')
-        ax2 = ax1.twinx()
-        ax2.plot(hist_plot.index, hist_plot['Close'], color='blue', linewidth=1.5)
-        ax2.set_ylabel('Price', color='blue')
-        ax2.tick_params(axis='y', labelcolor='blue')
-        ax1.set_title(f"{result['symbol']} — Technical Score (Red, LHS) vs Price (Blue, RHS)", fontsize=12)
-        fig.autofmt_xdate()
-        fig.tight_layout()
-        st.pyplot(fig)
-        plt.close(fig)
+    with st.expander("🔍 Check the Score & Price Trend of Each Ticker (Click to Expand)"):
+        for result in results:
+            st.markdown(f"### {result['symbol']}")
+            hist = result['history'].dropna()
+            if len(hist) < 10:
+                st.write("⚠️ Not Enough Data (Need at least 10 data points)")
+                continue
+            hist_plot = hist
+            fig, ax1 = plt.subplots(figsize=(10, 4))
+            ax1.plot(hist_plot.index, hist_plot['obos_score'], color='red', linewidth=1.5)
+            ax1.set_ylabel('Technical Score ', color='red')
+            ax1.tick_params(axis='y', labelcolor='red')
+            ax1.set_ylim(0, 100)
+            ax1.axhline(90, color='orange', linestyle='--', alpha=0.6)
+            ax1.axhline(10, color='green', linestyle='--', alpha=0.6)
+            ax1.grid(True, linestyle='--', alpha=0.3)
+            dates = hist_plot.index
+            overbought = hist_plot['obos_score_pct'] > 0.9
+            ax1.fill_between(dates, 0, 100, where=overbought, 
+                             color='red', alpha=0.2, label='Overbought (pct > 0.9)')
+            oversold = hist_plot['obos_score_pct'] < 0.1
+            ax1.fill_between(dates, 0, 100, where=oversold, 
+                             color='green', alpha=0.2, label='Oversold (pct < 0.1)')
+            ax2 = ax1.twinx()
+            ax2.plot(hist_plot.index, hist_plot['Close'], color='blue', linewidth=1.5)
+            ax2.set_ylabel('Price', color='blue')
+            ax2.tick_params(axis='y', labelcolor='blue')
+            ax1.set_title(f"{result['symbol']} — Technical Score (Red, LHS) vs Price (Blue, RHS)", fontsize=12)
+            fig.autofmt_xdate()
+            fig.tight_layout()
+            st.pyplot(fig)
+            plt.close(fig)
     
 
 # ========== 回测功能（默认折叠）==========
@@ -719,6 +719,22 @@ with st.expander("🔍 Run Full Backtest (Click to Expand)"):
         
         # --- 是否允许做空 ---
         allow_shorting = st.checkbox("-Allow Shorting", value=True)
+        
+        # --- 其他参数 ---
+        # --- 信号阈值参数 ---
+        col_thresh1, col_thresh2 = st.columns(2)
+        with col_thresh1:
+            signal_threshold_low = st.slider(
+                "Signal Threshold Low (超卖线)",
+                0.01, 0.49, 0.10, step=0.01,
+                help="Score percentile below this triggers BUY"
+            )
+        with col_thresh2:
+            signal_threshold_high = st.slider(
+                "Signal Threshold High (超买线)",
+                0.51, 0.99, 0.90, step=0.01,
+                help="Score percentile above this triggers SELL/SHORT"
+            )
         
         # --- 其他参数 ---
         col_bt1, col_bt2, col_bt3 = st.columns(3)
@@ -736,14 +752,14 @@ with st.expander("🔍 Run Full Backtest (Click to Expand)"):
             
             # 构建策略参数
             params = StrategyParams(
-                consecutive_days=int(consecutive_days),
-                signal_threshold_low=0.10,
-                signal_threshold_high=0.90,
-                max_position_per_stock=max_position_per_stock,
-                total_capital=total_capital,
-                commission_rate=0.001,
-                allow_shorting=allow_shorting
-            )
+                    consecutive_days=int(consecutive_days),
+                    signal_threshold_low=signal_threshold_low,
+                    signal_threshold_high=signal_threshold_high,
+                    max_position_per_stock=max_position_per_stock,
+                    total_capital=total_capital,
+                    commission_rate=0.001,
+                    allow_shorting=allow_shorting
+                )
             
             # 运行回测
             with st.spinner("Running backtest..."):
