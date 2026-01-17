@@ -732,7 +732,7 @@ with st.expander("🔍 Run Full Backtest (Click to Expand)"):
         with col_thresh2:
             signal_threshold_high = st.slider(
                 "Signal Threshold High (超买线)",
-                0.51, 0.99, 0.90, step=0.01,
+                0.51, 0.99, 0.95, step=0.01,
                 help="Score percentile above this triggers SELL/SHORT"
             )
         
@@ -741,7 +741,7 @@ with st.expander("🔍 Run Full Backtest (Click to Expand)"):
         with col_bt1:
             max_position_per_stock = st.slider("Max Position per Stock (%)", 5, 30, 20) / 100.0
         with col_bt2:
-            consecutive_days = st.number_input("Consecutive Days for Signal", 1, 5, 2, step=1)
+            consecutive_days = st.number_input("Consecutive Days for Signal", 1, 5, 3, step=1)
         with col_bt3:
             total_capital = st.number_input("Initial Capital ($)", 10_000, 10_000_000, 1_000_000, step=100_000)
         
