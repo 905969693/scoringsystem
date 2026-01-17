@@ -748,137 +748,137 @@ if st.button("📊 Analyze All", type="primary"):
             st.pyplot(fig)
             plt.close(fig)
     
-    # ========== 回测功能（默认折叠）==========
-    with st.expander("🔍 Run Full Backtest (Click to Expand)"):
-        st.subheader("⚙️ Backtest Configuration")
+# ========== 回测功能（默认折叠）==========
+with st.expander("🔍 Run Full Backtest (Click to Expand)"):
+    st.subheader("⚙️ Backtest Configuration")
+    
+    # --- 是否允许做空 ---
+    allow_shorting = st.checkbox("-Allow Shorting", value=True)
+    
+    # --- 其他参数 ---
+    col_bt1, col_bt2, col_bt3 = st.columns(3)
+    with col_bt1:
+        max_position_per_stock = st.slider("Max Position per Stock (%)", 5, 30, 20) / 100.0
+    with col_bt2:
+        consecutive_days = st.number_input("Consecutive Days for Signal", 1, 5, 2, step=1)
+    with col_bt3:
+        total_capital = st.number_input("Initial Capital ($)", 10_000, 10_000_000, 1_000_000, step=100_000)
+    
+    if st.button("🚀 Run Backtest", type="primary"):
+        # 构建策略参数
+        params = StrategyParams(
+            consecutive_days=int(consecutive_days),
+            signal_threshold_low=0.10,
+            signal_threshold_high=0.90,
+            max_position_per_stock=max_position_per_stock,
+            total_capital=total_capital,
+            commission_rate=0.001,
+            allow_shorting=allow_shorting
+        )
         
-        # --- 是否允许做空 ---
-        allow_shorting = st.checkbox("-Allow Shorting", value=True)
+        # 运行回测
+        with st.spinner("Running backtest..."):
+            result_backtest = run_full_backtest(symbols, start_str, end_str, params)
         
-        # --- 其他参数 ---
-        col_bt1, col_bt2, col_bt3 = st.columns(3)
-        with col_bt1:
-            max_position_per_stock = st.slider("Max Position per Stock (%)", 5, 30, 20) / 100.0
-        with col_bt2:
-            consecutive_days = st.number_input("Consecutive Days for Signal", 1, 5, 2, step=1)
-        with col_bt3:
-            total_capital = st.number_input("Initial Capital ($)", 10_000, 10_000_000, 1_000_000, step=100_000)
+        # === 1. 绩效指标 ===
+        perf = result_backtest['performance']
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Total Return", f"{perf['total_return']:.1%}")
+        with col2:
+            st.metric("Sharpe Ratio", f"{perf['sharpe_ratio']:.2f}")
+        with col3:
+            st.metric("Max Drawdown", f"{perf['max_drawdown']:.1%}")
         
-        if st.button("🚀 Run Backtest", type="primary"):
-            # 构建策略参数
-            params = StrategyParams(
-                consecutive_days=int(consecutive_days),
-                signal_threshold_low=0.10,
-                signal_threshold_high=0.90,
-                max_position_per_stock=max_position_per_stock,
-                total_capital=total_capital,
-                commission_rate=0.001,
-                allow_shorting=allow_shorting
+        # === 2. 净值曲线 ===
+        st.pyplot(result_backtest['figure'])
+        
+        # === 3. 当前持仓 ===
+        st.subheader("💼 Current Holdings")
+        final_positions = result_backtest['final_positions']
+        stock_data_dict = result_backtest['stock_data_dict']
+        
+        if final_positions:
+            pos_df = pd.DataFrame.from_dict(final_positions, orient='index')
+            pos_df.index.name = 'Ticker'
+            
+            # 安全提取当前价格
+            current_prices = []
+            for sym in pos_df.index:
+                if sym in stock_data_dict and len(stock_data_dict[sym]) > 0:
+                    price_val = stock_data_dict[sym].iloc[-1]['Close']
+                    if isinstance(price_val, pd.Series):
+                        price_val = price_val.iloc[-1]
+                    try:
+                        current_prices.append(float(price_val))
+                    except (TypeError, ValueError):
+                        current_prices.append(np.nan)
+                else:
+                    current_prices.append(np.nan)
+            
+            # 强制转为数值型
+            pos_df['shares'] = pd.to_numeric(pos_df['shares'], errors='coerce')
+            pos_df['entry_price'] = pd.to_numeric(pos_df['entry_price'], errors='coerce')
+            pos_df['current_price'] = pd.to_numeric(current_prices, errors='coerce')
+            pos_df['current_MV'] = pos_df['shares'] * pos_df['current_price']
+            
+            # 计算占总权益百分比
+            total_equity = float(result_backtest['portfolio_history']['value'].iloc[-1])
+            if total_equity != 0:
+                pos_df['position %'] = pos_df['current_MV'].abs() / abs(total_equity)
+            else:
+                pos_df['position %'] = 0.0
+            
+            # 再次确保数值型
+            for col in ['shares', 'entry_price', 'current_price', 'position %']:
+                pos_df[col] = pd.to_numeric(pos_df[col], errors='coerce').fillna(0.0)
+            
+            display_df = pos_df[['shares', 'entry_price', 'current_price', 'position %']].copy()
+            st.dataframe(display_df.style.format({
+                'shares': "{:+,.0f}",
+                'entry_price': "{:.2f}",
+                'current_price': "{:.2f}",
+                'position %': "{:.1%}"
+            }))
+        else:
+            st.info("📭 No positions at end of backtest.")
+        
+        # === 4. 交易历史 ===
+        st.subheader("📜 Trade History")
+        trades = result_backtest['trades']
+        
+        if trades:
+            trades_df = pd.DataFrame(trades)
+            # 计算市值和占比
+            trades_df['market_value'] = abs(trades_df['shares']) * trades_df['price']
+            trades_df['% of Equity'] = np.where(
+                trades_df['equity'] > 0,
+                trades_df['market_value'] / trades_df['equity'],
+                0.0
             )
             
-            # 运行回测
-            with st.spinner("Running backtest..."):
-                result_backtest = run_full_backtest(symbols, start_str, end_str, params)
+            # 格式化日期
+            trades_df['date'] = pd.to_datetime(trades_df['date']).dt.strftime('%Y-%m-%d')
             
-            # === 1. 绩效指标 ===
-            perf = result_backtest['performance']
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                st.metric("Total Return", f"{perf['total_return']:.1%}")
-            with col2:
-                st.metric("Sharpe Ratio", f"{perf['sharpe_ratio']:.2f}")
-            with col3:
-                st.metric("Max Drawdown", f"{perf['max_drawdown']:.1%}")
+            # 重命名
+            trades_df = trades_df.rename(columns={
+                'date': 'Date',
+                'symbol': 'Ticker',
+                'action': 'Action',
+                'shares': 'Shares',
+                'price': 'Price'
+            })
             
-            # === 2. 净值曲线 ===
-            st.pyplot(result_backtest['figure'])
-            
-            # === 3. 当前持仓 ===
-            st.subheader("💼 Current Holdings")
-            final_positions = result_backtest['final_positions']
-            stock_data_dict = result_backtest['stock_data_dict']
-            
-            if final_positions:
-                pos_df = pd.DataFrame.from_dict(final_positions, orient='index')
-                pos_df.index.name = 'Ticker'
-                
-                # 安全提取当前价格
-                current_prices = []
-                for sym in pos_df.index:
-                    if sym in stock_data_dict and len(stock_data_dict[sym]) > 0:
-                        price_val = stock_data_dict[sym].iloc[-1]['Close']
-                        if isinstance(price_val, pd.Series):
-                            price_val = price_val.iloc[-1]
-                        try:
-                            current_prices.append(float(price_val))
-                        except (TypeError, ValueError):
-                            current_prices.append(np.nan)
-                    else:
-                        current_prices.append(np.nan)
-                
-                # 强制转为数值型
-                pos_df['shares'] = pd.to_numeric(pos_df['shares'], errors='coerce')
-                pos_df['entry_price'] = pd.to_numeric(pos_df['entry_price'], errors='coerce')
-                pos_df['current_price'] = pd.to_numeric(current_prices, errors='coerce')
-                pos_df['current_MV'] = pos_df['shares'] * pos_df['current_price']
-                
-                # 计算占总权益百分比
-                total_equity = float(result_backtest['portfolio_history']['value'].iloc[-1])
-                if total_equity != 0:
-                    pos_df['position %'] = pos_df['current_MV'].abs() / abs(total_equity)
-                else:
-                    pos_df['position %'] = 0.0
-                
-                # 再次确保数值型
-                for col in ['shares', 'entry_price', 'current_price', 'position %']:
-                    pos_df[col] = pd.to_numeric(pos_df[col], errors='coerce').fillna(0.0)
-                
-                display_df = pos_df[['shares', 'entry_price', 'current_price', 'position %']].copy()
-                st.dataframe(display_df.style.format({
-                    'shares': "{:+,.0f}",
-                    'entry_price': "{:.2f}",
-                    'current_price': "{:.2f}",
-                    'position %': "{:.1%}"
-                }))
-            else:
-                st.info("📭 No positions at end of backtest.")
-            
-            # === 4. 交易历史 ===
-            st.subheader("📜 Trade History")
-            trades = result_backtest['trades']
-            
-            if trades:
-                trades_df = pd.DataFrame(trades)
-                # 计算市值和占比
-                trades_df['market_value'] = abs(trades_df['shares']) * trades_df['price']
-                trades_df['% of Equity'] = np.where(
-                    trades_df['equity'] > 0,
-                    trades_df['market_value'] / trades_df['equity'],
-                    0.0
-                )
-                
-                # 格式化日期
-                trades_df['date'] = pd.to_datetime(trades_df['date']).dt.strftime('%Y-%m-%d')
-                
-                # 重命名
-                trades_df = trades_df.rename(columns={
-                    'date': 'Date',
-                    'symbol': 'Ticker',
-                    'action': 'Action',
-                    'shares': 'Shares',
-                    'price': 'Price'
-                })
-                
-                # 排序 & 显示
-                trades_df = trades_df.sort_values('Date', ascending=False).reset_index(drop=True)
-                display_cols = ['Date', 'Ticker', 'Action', 'Shares', 'Price', '% of Equity']
-                st.dataframe(
-                    trades_df[display_cols].style.format({
-                        'Price': "${:.2f}",
-                        '% of Equity': "{:.1%}"
-                    }),
-                    use_container_width=True,
-                    height=400
-                )
-            else:
-                st.info("📭 No trades executed during backtest period.")
+            # 排序 & 显示
+            trades_df = trades_df.sort_values('Date', ascending=False).reset_index(drop=True)
+            display_cols = ['Date', 'Ticker', 'Action', 'Shares', 'Price', '% of Equity']
+            st.dataframe(
+                trades_df[display_cols].style.format({
+                    'Price': "${:.2f}",
+                    '% of Equity': "{:.1%}"
+                }),
+                use_container_width=True,
+                height=400
+            )
+        else:
+            st.info("📭 No trades executed during backtest period.")
