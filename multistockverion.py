@@ -492,22 +492,56 @@ def calculate_obos_score(df, weights=None):
     return np.clip(score, 0, 100)
 
 # ========== 多股票分析函数 ==========
-def analyze_single_stock(symbol, start, end,interval):
+def analyze_single_stock(symbol, start, end, interval):
     """分析单只股票，返回结果字典"""
     try:
-        df = fetch_stock_data(symbol, start=start, end=end,interval=interval)
+        df = fetch_stock_data(symbol, start=start, end=end, interval=interval)
         if df.empty:
             return None
         
         df = calculate_indicators(df)
         df['obos_score'] = calculate_obos_score(df)
         td_signal = check_td_nine(df)
+        
         def rolling_pct_rank(x):
             return pd.Series(x).rank(pct=True).iloc[-1]
         
         df['obos_score_pct'] = df['obos_score'].rolling(window=60, min_periods=30).apply(
             rolling_pct_rank, raw=False
         )
+
+        # ===== 新增：计算连续超买/超卖天数 =====
+        score_pct = df['obos_score_pct'].dropna()
+        if len(score_pct) == 0:
+            consecutive_days = 0
+        else:
+            # 默认阈值（与策略一致）
+            low_thresh = 0.10
+            high_thresh = 0.90
+            
+            consecutive_days = 0
+            # 从最新日期往前数
+            for i in range(len(score_pct) - 1, -1, -1):
+                pct_val = score_pct.iloc[i]
+                if i == len(score_pct) - 1:
+                    # 最新一天
+                    if pct_val < low_thresh:
+                        consecutive_days = 1
+                        direction = 'oversold'
+                    elif pct_val > high_thresh:
+                        consecutive_days = -1
+                        direction = 'overbought'
+                    else:
+                        consecutive_days = 0
+                        break
+                else:
+                    if consecutive_days > 0 and direction == 'oversold' and pct_val < low_thresh:
+                        consecutive_days += 1
+                    elif consecutive_days < 0 and direction == 'overbought' and pct_val > high_thresh:
+                        consecutive_days -= 1
+                    else:
+                        break
+        # ===================================
 
         latest = df.iloc[-1]
         return {
@@ -522,6 +556,7 @@ def analyze_single_stock(symbol, start, end,interval):
             'td_sell': td_signal['sell'],
             'td_buy_count': td_signal['buy_count'],
             'td_sell_count': td_signal['sell_count'],
+            'consecutive_days': consecutive_days,  # ← 新增字段
             'history': df[['Close', 'obos_score','obos_score_pct']].copy()
         }
     except Exception as e:
@@ -669,10 +704,11 @@ if st.button("📊 Analyze All", type="primary"):
     else:
         df_results = pd.DataFrame(results).round(2)
         df_display = df_results[[
-            'symbol', 'score', 'score_pct', 'td_buy_count', 'td_sell_count', 'rsi', 'j', 'bb_position'
-        ]].copy()
+                    'symbol', 'score', 'score_pct', 'consecutive_days', 'td_buy_count', 'td_sell_count', 'rsi', 'j', 'bb_position'
+                ]].copy()
         df_display.columns = [
-            'Ticker', 'Score', 'Score in Percentile', 'TD Buy', 'TD Sell', 'RSI', 'KDJ-J', 'Bollinger%']
+            'Ticker', 'Score', 'Score in Percentile', 'Consecutive Signal Days', 'TD Buy', 'TD Sell', 'RSI', 'KDJ-J', 'Bollinger%'
+        ]
         st.subheader(f"📈 Result ( {len(results)} Stocks)")
         st.dataframe(df_display, use_container_width=True, height=500)
 
