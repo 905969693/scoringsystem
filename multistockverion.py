@@ -633,73 +633,112 @@ else:
 today = date.today()
 end_date = st.date_input("End Date", value=today)
 
-# ===== 确保 symbols 始终有定义 =====
-if 'watchlist' in st.session_state and st.session_state.watchlist:
-    default_symbols = st.session_state.watchlist
-else:
-    default_symbols = [s.strip().upper() for s in ticker_list.split(",") if s.strip()]
-
-# 用户可覆盖（但通常不需要）
-symbols = default_symbols
-
 if st.button("📊 Analyze All", type="primary"):
-
+    # ✅ 优先使用用户的关注列表
+    if st.session_state.watchlist:
+        symbols = st.session_state.watchlist
+        st.info(f"Analyzing {len(symbols)} Tickers in the Watchlist")
+    else:
+        symbols = [s.strip().upper() for s in symbols_input.split(",") if s.strip()]
+        if not symbols:
+            st.error("Pls add tickers to watchlist, or simply input ticker(s)")
+            st.stop()
             
     # 计算日期范围
     start_date = pd.to_datetime(end_date) - pd.DateOffset(months=months_back)
     start_str = start_date.strftime("%Y-%m-%d")
     end_str = (pd.to_datetime(end_date) + pd.Timedelta(days=1)).strftime("%Y-%m-%d")
 
+    # ===== 缓存到 session_state 供回测使用 =====
+    st.session_state.last_symbols = symbols
+    st.session_state.last_start_str = start_str
+    st.session_state.last_end_str = end_str
+    # =========================================
 
-
-
+    # #####回测代码（仅用于绩效指标预览，非最终回测）######
+    params_preview = StrategyParams(
+        consecutive_days=2,
+        signal_threshold_low=0.10,
+        signal_threshold_high=0.90,
+        max_position_per_stock=0.20,
+        total_capital=1_000_000,
+        commission_rate=0.001,
+        allow_shorting=True  # 预览用默认开启
+    )
     
-    # 分析所有股票
+    # 运行回测（预览）
+    result_backtest = run_full_backtest(symbols, start_str, end_str, params_preview)
+    
+    # === 1. 绩效指标（使用 st.metric，美观且突出）===
+    perf = result_backtest['performance']
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("Total Return", f"{perf['total_return']:.1%}")
+    with col2:
+        st.metric("Sharpe Ratio", f"{perf['sharpe_ratio']:.2f}")
+    with col3:
+        st.metric("Max Drawdown", f"{perf['max_drawdown']:.1%}")
+    
+    # === 2. 净值曲线图 ===
+    st.subheader("📊 NAV Plot")
+    st.pyplot(result_backtest['figure'])
+    
+    # === 3. 当前持仓（表格形式，更清晰）===
+    st.subheader("💼 Current Holdings")
+    final_positions = result_backtest['final_positions']
+    stock_data_dict = result_backtest['stock_data_dict']
+    
+    if final_positions:
+        pos_df = pd.DataFrame.from_dict(final_positions, orient='index')
+        pos_df.index.name = 'Ticker'
+        pos_df = pos_df.rename(columns={'shares': 'shares', 'entry_price': 'entry_price'})
+        pos_df['current_price'] = pos_df.index.map(
+            lambda sym: stock_data_dict[sym].iloc[-1]['Close']
+            if sym in stock_data_dict else np.nan
+        )
+        pos_df['current_MV'] = pos_df['shares'] * pos_df['current_price']
+        total_position_value = pos_df['current_MV'].abs().sum()
+        total_equity = result_backtest['portfolio_history']['value'].iloc[-1]
+        pos_df['position %'] = pos_df['current_MV'].abs() / total_equity if total_equity > 0 else 0.0
+        display_df = pos_df[['shares', 'entry_price', 'current_price', 'position %']].copy()
+        st.dataframe(display_df.style.format({
+            'shares': "{:+,.0f}",
+            'entry_price': "{:.2f}",
+            'current_price': "{:.2f}",
+            'position %': "{:.1%}"
+        }))
+    else:
+        st.info("📭 回测结束时无持仓")
+    
+    # 分析所有股票（用于个股图表）
     results = []
     with st.spinner(f"Analyzing {len(symbols)} Stocks..."):
         for symbol in symbols:
-            result = analyze_single_stock(symbol, start_str, end_str,interval)
+            result = analyze_single_stock(symbol, start_str, end_str, interval)
             if result:
                 results.append(result)
     
     if not results:
         st.error("All failed, pls check formating")
     else:
-        # 构建结果表格
-        df_results = pd.DataFrame(results)
-        df_results = df_results.round(2)
-        
-        # 显示汇总表
-        st.subheader(f"📈 Result ( {len(results)} Stocks)")
-        
-        # 选择需要的列，包括 TD 计数
+        df_results = pd.DataFrame(results).round(2)
         df_display = df_results[[
             'symbol', 'score', 'score_pct', 'td_buy_count', 'td_sell_count', 'rsi', 'j', 'bb_position'
         ]].copy()
-        
-        # 可选：重命名列，更清晰
         df_display.columns = [
             'Ticker', 'Score', 'Score in Percentile', 'TD Buy', 'TD Sell', 'RSI', 'KDJ-J', 'Bollinger%']
-        
-
+        st.subheader(f"📈 Result ( {len(results)} Stocks)")
         st.dataframe(df_display, use_container_width=True, height=500)
 
-    
     with st.expander("Check the Score & Price Trend of Each Ticker. Apart from showing the technical score, we highlight the Overbought(red) / Oversold(green) area by using the rolling 60 days techncial score percentile (ranging from 0 to 1)"):
         for result in results:
             st.markdown(f"### {result['symbol']}")
             hist = result['history'].dropna()
-            
             if len(hist) < 10:
                 st.write("⚠️ Not Enough Data (Need at least 10 data points)")
                 continue
-            
-            
-            hist_plot = hist #这里全都取了，试试看
-            
+            hist_plot = hist
             fig, ax1 = plt.subplots(figsize=(10, 4))
-            
-            # 评分（左轴）
             ax1.plot(hist_plot.index, hist_plot['obos_score'], color='red', linewidth=1.5)
             ax1.set_ylabel('Technical Score ', color='red')
             ax1.tick_params(axis='y', labelcolor='red')
@@ -707,164 +746,151 @@ if st.button("📊 Analyze All", type="primary"):
             ax1.axhline(90, color='orange', linestyle='--', alpha=0.6)
             ax1.axhline(10, color='green', linestyle='--', alpha=0.6)
             ax1.grid(True, linestyle='--', alpha=0.3)
-
             dates = hist_plot.index
-            
-            # 填充超买区域（pct > 0.9）
             overbought = hist_plot['obos_score_pct'] > 0.9
             ax1.fill_between(dates, 0, 100, where=overbought, 
                              color='red', alpha=0.2, label='Overbought (pct > 0.9)')
-            
-            # 填充超卖区域（pct < 0.1）
             oversold = hist_plot['obos_score_pct'] < 0.1
             ax1.fill_between(dates, 0, 100, where=oversold, 
                              color='green', alpha=0.2, label='Oversold (pct < 0.1)')
-                    
-            # 股价（右轴）
             ax2 = ax1.twinx()
             ax2.plot(hist_plot.index, hist_plot['Close'], color='blue', linewidth=1.5)
             ax2.set_ylabel('Price', color='blue')
             ax2.tick_params(axis='y', labelcolor='blue')
-            
-            # 格式化
             ax1.set_title(f"{result['symbol']} — Technical Score (Red, LHS) vs Price (Blue, RHS)", fontsize=12)
-            fig.autofmt_xdate()  # 自动旋转日期
+            fig.autofmt_xdate()
             fig.tight_layout()
-            
             st.pyplot(fig)
             plt.close(fig)
     
+
 # ========== 回测功能（默认折叠）==========
 with st.expander("🔍 Run Full Backtest (Click to Expand)"):
-    st.subheader("⚙️ Backtest Configuration")
-    
-    # --- 是否允许做空 ---
-    allow_shorting = st.checkbox("-Allow Shorting", value=True)
-    
-    # --- 其他参数 ---
-    col_bt1, col_bt2, col_bt3 = st.columns(3)
-    with col_bt1:
-        max_position_per_stock = st.slider("Max Position per Stock (%)", 5, 30, 20) / 100.0
-    with col_bt2:
-        consecutive_days = st.number_input("Consecutive Days for Signal", 1, 5, 2, step=1)
-    with col_bt3:
-        total_capital = st.number_input("Initial Capital ($)", 10_000, 10_000_000, 1_000_000, step=100_000)
-    
-    if st.button("🚀 Run Backtest", type="primary"):
-        # 构建策略参数
-        params = StrategyParams(
-            consecutive_days=int(consecutive_days),
-            signal_threshold_low=0.10,
-            signal_threshold_high=0.90,
-            max_position_per_stock=max_position_per_stock,
-            total_capital=total_capital,
-            commission_rate=0.001,
-            allow_shorting=allow_shorting
-        )
+    if 'last_symbols' not in st.session_state:
+        st.warning("⚠️ Please click 'Analyze All' first to load stock data.")
+    else:
+        st.subheader("⚙️ Backtest Configuration")
         
-        # 运行回测
-        with st.spinner("Running backtest..."):
-            result_backtest = run_full_backtest(symbols, start_str, end_str, params)
+        # --- 是否允许做空 ---
+        allow_shorting = st.checkbox("-Allow Shorting", value=True)
         
-        # === 1. 绩效指标 ===
-        perf = result_backtest['performance']
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            st.metric("Total Return", f"{perf['total_return']:.1%}")
-        with col2:
-            st.metric("Sharpe Ratio", f"{perf['sharpe_ratio']:.2f}")
-        with col3:
-            st.metric("Max Drawdown", f"{perf['max_drawdown']:.1%}")
+        # --- 其他参数 ---
+        col_bt1, col_bt2, col_bt3 = st.columns(3)
+        with col_bt1:
+            max_position_per_stock = st.slider("Max Position per Stock (%)", 5, 30, 20) / 100.0
+        with col_bt2:
+            consecutive_days = st.number_input("Consecutive Days for Signal", 1, 5, 2, step=1)
+        with col_bt3:
+            total_capital = st.number_input("Initial Capital ($)", 10_000, 10_000_000, 1_000_000, step=100_000)
         
-        # === 2. 净值曲线 ===
-        st.pyplot(result_backtest['figure'])
-        
-        # === 3. 当前持仓 ===
-        st.subheader("💼 Current Holdings")
-        final_positions = result_backtest['final_positions']
-        stock_data_dict = result_backtest['stock_data_dict']
-        
-        if final_positions:
-            pos_df = pd.DataFrame.from_dict(final_positions, orient='index')
-            pos_df.index.name = 'Ticker'
+        if st.button("🚀 Run Backtest", type="primary"):
+            symbols = st.session_state.last_symbols
+            start_str = st.session_state.last_start_str
+            end_str = st.session_state.last_end_str
             
-            # 安全提取当前价格
-            current_prices = []
-            for sym in pos_df.index:
-                if sym in stock_data_dict and len(stock_data_dict[sym]) > 0:
-                    price_val = stock_data_dict[sym].iloc[-1]['Close']
-                    if isinstance(price_val, pd.Series):
-                        price_val = price_val.iloc[-1]
-                    try:
-                        current_prices.append(float(price_val))
-                    except (TypeError, ValueError):
+            # 构建策略参数
+            params = StrategyParams(
+                consecutive_days=int(consecutive_days),
+                signal_threshold_low=0.10,
+                signal_threshold_high=0.90,
+                max_position_per_stock=max_position_per_stock,
+                total_capital=total_capital,
+                commission_rate=0.001,
+                allow_shorting=allow_shorting
+            )
+            
+            # 运行回测
+            with st.spinner("Running backtest..."):
+                result_backtest = run_full_backtest(symbols, start_str, end_str, params)
+            
+            # === 1. 绩效指标 ===
+            perf = result_backtest['performance']
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("Total Return", f"{perf['total_return']:.1%}")
+            with col2:
+                st.metric("Sharpe Ratio", f"{perf['sharpe_ratio']:.2f}")
+            with col3:
+                st.metric("Max Drawdown", f"{perf['max_drawdown']:.1%}")
+            
+            # === 2. 净值曲线 ===
+            st.pyplot(result_backtest['figure'])
+            
+            # === 3. 当前持仓 ===
+            st.subheader("💼 Current Holdings")
+            final_positions = result_backtest['final_positions']
+            stock_data_dict = result_backtest['stock_data_dict']
+            
+            if final_positions:
+                pos_df = pd.DataFrame.from_dict(final_positions, orient='index')
+                pos_df.index.name = 'Ticker'
+                
+                current_prices = []
+                for sym in pos_df.index:
+                    if sym in stock_data_dict and len(stock_data_dict[sym]) > 0:
+                        price_val = stock_data_dict[sym].iloc[-1]['Close']
+                        if isinstance(price_val, pd.Series):
+                            price_val = price_val.iloc[-1]
+                        try:
+                            current_prices.append(float(price_val))
+                        except (TypeError, ValueError):
+                            current_prices.append(np.nan)
+                    else:
                         current_prices.append(np.nan)
+                
+                pos_df['shares'] = pd.to_numeric(pos_df['shares'], errors='coerce')
+                pos_df['entry_price'] = pd.to_numeric(pos_df['entry_price'], errors='coerce')
+                pos_df['current_price'] = pd.to_numeric(current_prices, errors='coerce')
+                pos_df['current_MV'] = pos_df['shares'] * pos_df['current_price']
+                
+                total_equity = float(result_backtest['portfolio_history']['value'].iloc[-1])
+                if total_equity != 0:
+                    pos_df['position %'] = pos_df['current_MV'].abs() / abs(total_equity)
                 else:
-                    current_prices.append(np.nan)
-            
-            # 强制转为数值型
-            pos_df['shares'] = pd.to_numeric(pos_df['shares'], errors='coerce')
-            pos_df['entry_price'] = pd.to_numeric(pos_df['entry_price'], errors='coerce')
-            pos_df['current_price'] = pd.to_numeric(current_prices, errors='coerce')
-            pos_df['current_MV'] = pos_df['shares'] * pos_df['current_price']
-            
-            # 计算占总权益百分比
-            total_equity = float(result_backtest['portfolio_history']['value'].iloc[-1])
-            if total_equity != 0:
-                pos_df['position %'] = pos_df['current_MV'].abs() / abs(total_equity)
+                    pos_df['position %'] = 0.0
+                
+                for col in ['shares', 'entry_price', 'current_price', 'position %']:
+                    pos_df[col] = pd.to_numeric(pos_df[col], errors='coerce').fillna(0.0)
+                
+                display_df = pos_df[['shares', 'entry_price', 'current_price', 'position %']].copy()
+                st.dataframe(display_df.style.format({
+                    'shares': "{:+,.0f}",
+                    'entry_price': "{:.2f}",
+                    'current_price': "{:.2f}",
+                    'position %': "{:.1%}"
+                }))
             else:
-                pos_df['position %'] = 0.0
+                st.info("📭 No positions at end of backtest.")
             
-            # 再次确保数值型
-            for col in ['shares', 'entry_price', 'current_price', 'position %']:
-                pos_df[col] = pd.to_numeric(pos_df[col], errors='coerce').fillna(0.0)
+            # === 4. 交易历史 ===
+            st.subheader("📜 Trade History")
+            trades = result_backtest['trades']
             
-            display_df = pos_df[['shares', 'entry_price', 'current_price', 'position %']].copy()
-            st.dataframe(display_df.style.format({
-                'shares': "{:+,.0f}",
-                'entry_price': "{:.2f}",
-                'current_price': "{:.2f}",
-                'position %': "{:.1%}"
-            }))
-        else:
-            st.info("📭 No positions at end of backtest.")
-        
-        # === 4. 交易历史 ===
-        st.subheader("📜 Trade History")
-        trades = result_backtest['trades']
-        
-        if trades:
-            trades_df = pd.DataFrame(trades)
-            # 计算市值和占比
-            trades_df['market_value'] = abs(trades_df['shares']) * trades_df['price']
-            trades_df['% of Equity'] = np.where(
-                trades_df['equity'] > 0,
-                trades_df['market_value'] / trades_df['equity'],
-                0.0
-            )
-            
-            # 格式化日期
-            trades_df['date'] = pd.to_datetime(trades_df['date']).dt.strftime('%Y-%m-%d')
-            
-            # 重命名
-            trades_df = trades_df.rename(columns={
-                'date': 'Date',
-                'symbol': 'Ticker',
-                'action': 'Action',
-                'shares': 'Shares',
-                'price': 'Price'
-            })
-            
-            # 排序 & 显示
-            trades_df = trades_df.sort_values('Date', ascending=False).reset_index(drop=True)
-            display_cols = ['Date', 'Ticker', 'Action', 'Shares', 'Price', '% of Equity']
-            st.dataframe(
-                trades_df[display_cols].style.format({
-                    'Price': "${:.2f}",
-                    '% of Equity': "{:.1%}"
-                }),
-                use_container_width=True,
-                height=400
-            )
-        else:
-            st.info("📭 No trades executed during backtest period.")
+            if trades:
+                trades_df = pd.DataFrame(trades)
+                trades_df['market_value'] = abs(trades_df['shares']) * trades_df['price']
+                trades_df['% of Equity'] = np.where(
+                    trades_df['equity'] > 0,
+                    trades_df['market_value'] / trades_df['equity'],
+                    0.0
+                )
+                trades_df['date'] = pd.to_datetime(trades_df['date']).dt.strftime('%Y-%m-%d')
+                trades_df = trades_df.rename(columns={
+                    'date': 'Date',
+                    'symbol': 'Ticker',
+                    'action': 'Action',
+                    'shares': 'Shares',
+                    'price': 'Price'
+                })
+                trades_df = trades_df.sort_values('Date', ascending=False).reset_index(drop=True)
+                display_cols = ['Date', 'Ticker', 'Action', 'Shares', 'Price', '% of Equity']
+                st.dataframe(
+                    trades_df[display_cols].style.format({
+                        'Price': "${:.2f}",
+                        '% of Equity': "{:.1%}"
+                    }),
+                    use_container_width=True,
+                    height=400
+                )
+            else:
+                st.info("📭 No trades executed during backtest period.")
