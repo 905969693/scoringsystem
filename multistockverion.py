@@ -734,6 +734,34 @@ if st.button("📊 Analyze All", type="primary"):
         }))
     else:
         st.info("📭 回测结束时无持仓")
+
+    # === 4. 交易历史详情 ===
+    st.subheader("📜 Trade History")
+    trades = result_backtest['trades']
+    
+    if trades:
+        trades_df = pd.DataFrame(trades)
+        # 格式化日期
+        trades_df['date'] = pd.to_datetime(trades_df['date']).dt.strftime('%Y-%m-%d')
+        # 重命名列更友好
+        trades_df = trades_df.rename(columns={
+            'date': 'Date',
+            'symbol': 'Ticker',
+            'action': 'Action',
+            'shares': 'Shares',
+            'price': 'Price',
+            'commission': 'Commission'
+        })
+        # 按日期倒序（最新在前）
+        trades_df = trades_df.sort_values('Date', ascending=False).reset_index(drop=True)
+        
+        st.dataframe(
+            trades_df[['Date', 'Ticker', 'Action', 'Shares', 'Price', 'Commission']],
+            use_container_width=True,
+            height=400
+        )
+    else:
+        st.info("📭 No trades executed during backtest period.")
     
     # 分析所有股票
     results = []
