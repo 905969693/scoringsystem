@@ -633,38 +633,24 @@ else:
 today = date.today()
 end_date = st.date_input("End Date", value=today)
 
+# ===== 确保 symbols 始终有定义 =====
+if 'watchlist' in st.session_state and st.session_state.watchlist:
+    default_symbols = st.session_state.watchlist
+else:
+    default_symbols = [s.strip().upper() for s in ticker_list.split(",") if s.strip()]
 
+# 用户可覆盖（但通常不需要）
+symbols = default_symbols
 
 if st.button("📊 Analyze All", type="primary"):
-    # ✅ 优先使用用户的关注列表
-    if st.session_state.watchlist:
-        symbols = st.session_state.watchlist
-        st.info(f"Analyzing {len(symbols)} Tickers in the Watchlist")
-    else:
-       # 回退到顶部输入框
-        symbols = [s.strip().upper() for s in symbols_input.split(",") if s.strip()]
-        if not symbols:
-            st.error("Pls add tickers to watchlist, or simply input ticker(s)")
-            st.stop()
+
             
     # 计算日期范围
     start_date = pd.to_datetime(end_date) - pd.DateOffset(months=months_back)
     start_str = start_date.strftime("%Y-%m-%d")
     end_str = (pd.to_datetime(end_date) + pd.Timedelta(days=1)).strftime("%Y-%m-%d")
 
-    # #####回测代码： ######
 
-    #回测相关内容输出#
-    params = StrategyParams(
-        consecutive_days=2,
-        signal_threshold_low=0.10,
-        signal_threshold_high=0.90,
-        max_position_per_stock=0.20,
-        total_capital=1_000_000,
-        commission_rate=0.001
-    
-    )
-    
 
 
     
