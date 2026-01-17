@@ -597,7 +597,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 
-st.title("📊 Stock Scoring System")
+st.title("📊 Scoring & Backtesting System")
 st.caption("0 = Extreme Oversold，100 = Extreme Overbought")
 
 # 初始化关注列表（从 URL 加载）
