@@ -791,7 +791,7 @@ with st.expander("🔍 Run Full Backtest (Click to Expand)"):
                 
                 total_equity = float(result_backtest['portfolio_history']['value'].iloc[-1])
                 if total_equity != 0:
-                    pos_df['position %'] = pos_df['current_MV'].abs() / abs(total_equity)
+                    pos_df['position %'] = pos_df['current_MV'] / abs(total_equity)
                 else:
                     pos_df['position %'] = 0.0
                 
