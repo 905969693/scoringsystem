@@ -896,11 +896,7 @@ with st.expander("🔍 Run Full Backtest (Click to Expand)"):
             if trades:
                 trades_df = pd.DataFrame(trades)
                 trades_df['market_value'] = abs(trades_df['shares']) * trades_df['price']
-                trades_df['% of Equity'] = np.where(
-                    trades_df['equity'] > 0,
-                    trades_df['market_value'] / trades_df['equity'],
-                    0.0
-                )
+
                 trades_df['date'] = pd.to_datetime(trades_df['date']).dt.strftime('%Y-%m-%d')
                 trades_df = trades_df.rename(columns={
                     'date': 'Date',
@@ -910,11 +906,10 @@ with st.expander("🔍 Run Full Backtest (Click to Expand)"):
                     'price': 'Price'
                 })
                 trades_df = trades_df.sort_values('Date', ascending=False).reset_index(drop=True)
-                display_cols = ['Date', 'Ticker', 'Action', 'Shares', 'Price', '% of Equity']
+                display_cols = ['Date', 'Ticker', 'Action', 'Shares', 'Price']
                 st.dataframe(
                     trades_df[display_cols].style.format({
-                        'Price': "${:.2f}",
-                        '% of Equity': "{:.1%}"
+                        'Price': "${:.2f}"
                     }),
                     use_container_width=True,
                     height=400
