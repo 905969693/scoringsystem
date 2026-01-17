@@ -702,8 +702,17 @@ if st.button("📊 Analyze All", type="primary"):
         
         # 计算占总仓位（equity）的百分比
         total_equity = result_backtest['portfolio_history']['value'].iloc[-1]
-        pos_df['position %'] = pos_df['current_MV'].abs() / total_equity if total_equity > 0 else 0.0
         
+        # 安全计算 position %
+        if total_equity > 0:
+            pos_pct = pos_df['current_MV'].abs() / total_equity
+        else:
+            pos_pct = pd.Series([0.0] * len(pos_df), index=pos_df.index)
+        
+        # 强制转为 float，并填充 NaN 为 0.0
+        pos_df['position %'] = pd.to_numeric(pos_pct, errors='coerce').fillna(0.0)
+
+    
         # 只显示需要的列
         display_df = pos_df[['shares', 'entry_price', 'current_price', 'position %']].copy()
         
