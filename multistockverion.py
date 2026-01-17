@@ -18,10 +18,11 @@ class StrategyParams:
                  signal_threshold_low=0.10,
                  signal_threshold_high=0.90,
                  consecutive_days=2,
-                 max_position_per_stock=0.15,  # 单票最大仓位比例
+                 max_position_per_stock=0.15,  # 单票最大仓位比例（占权益）
                  total_capital=1_000_000,
                  commission_rate=0.001,        # 佣金率
-                 risk_free_rate=0.02):         # 年化无风险利率
+                 risk_free_rate=0.02,          # 年化无风险利率
+                 max_gross_exposure=2.0):      # 最大总杠杆（多+空 ≤ 2.0 × equity）
         self.lookback_window = lookback_window
         self.signal_threshold_low = signal_threshold_low
         self.signal_threshold_high = signal_threshold_high
@@ -30,26 +31,22 @@ class StrategyParams:
         self.total_capital = total_capital
         self.commission_rate = commission_rate
         self.risk_free_rate = risk_free_rate
+        self.max_gross_exposure = max_gross_exposure
 
 def run_backtest(stock_data_dict, params):
     """
-    执行回测
-    
-    Parameters:
-    - stock_data_dict: dict {symbol: DataFrame}，每个 DataFrame 必须包含 'Close' 和 'score_percentile'
-    - params: StrategyParams 实例
+    执行双向回测（支持做多、做空、补仓/加空）
     
     Returns:
     - portfolio_history: DataFrame (date, value, cash)
     - trades_log: list of trade records
-    - positions_log: dict {symbol: [position records]}
+    - positions: dict {symbol: {'shares': int, 'entry_price': float}}
     """
-    # === 1. 对齐所有股票的日期索引 ===
+    # === 1. 对齐日期 ===
     all_dates = set()
     for df in stock_data_dict.values():
-        all_dates.update(df.index)  # df.index 已是 DatetimeIndex
-    all_dates = sorted(pd.to_datetime(list(all_dates)))  # 确保是 Timestamp 列表
-
+        all_dates.update(df.index)
+    all_dates = sorted(pd.to_datetime(list(all_dates)))
     symbols = list(stock_data_dict.keys())
     
     # 初始化信号计数器
@@ -58,62 +55,53 @@ def run_backtest(stock_data_dict, params):
     # 初始化投资组合
     portfolio = {
         'cash': float(params.total_capital),
-        'positions': {},  # sym -> {'shares': int, 'entry_price': float}
+        'positions': {},  # sym -> {'shares': int (可负), 'entry_price': float}
         'history': [],
         'trades': []
     }
     
     # === 2. 主回测循环 ===
     for date in all_dates:
-        
-    
-        # === 新增：确保 date 是标量 Timestamp ===
-        if not isinstance(date, pd.Timestamp):
+        if not isinstance(date, pd.Timestamp) or pd.isna(date):
             continue
-        if pd.isna(date):
-            continue
-        # ======================================
-
         
-        # --- 2.1 更新当前持仓市值 ---
-        current_value = portfolio['cash']
+        # --- 2.1 计算当日账户权益（Equity）---
+        current_equity = portfolio['cash']
         for sym, pos in portfolio['positions'].items():
             if date in stock_data_dict[sym].index:
-                try:
-                    price = stock_data_dict[sym].loc[date, 'Close'].iloc[0]
-                except Exception as e:
-                    print(f"⚠️ Price access error for {sym} on {date}: {e}")
-                    continue
-                current_value += pos['shares'] * price
+                price_val = stock_data_dict[sym].loc[date, 'Close']
+                if isinstance(price_val, pd.Series):
+                    price_val = price_val.iloc[-1]
+                price = float(price_val)
+                current_equity += pos['shares'] * price  # 空头 shares 为负，自动减
         
+        # 记录历史（value = equity）
         portfolio['history'].append({
             'date': date,
-            'value': current_value,
+            'value': current_equity,
             'cash': portfolio['cash']
         })
         
-        # --- 2.2 检查当日信号（仅在有数据的股票上）---
+        # --- 2.2 检查信号 ---
         buy_signals = []
         sell_signals = []
         
         for sym in symbols:
             if date not in stock_data_dict[sym].index:
                 continue
-        
+            
             try:
-                pct = stock_data_dict[sym].loc[date, 'score_percentile']
+                pct_val = stock_data_dict[sym].loc[date, 'score_percentile']
+                if isinstance(pct_val, pd.Series):
+                    pct_val = pct_val.iloc[-1]
+                pct = float(pct_val)
             except Exception as e:
-                print('date',date)
-                print('stock_data_dict[sym]',stock_data_dict[sym])
-                print(f"⚠️ Percentile access error for {sym} on {date}: {e}")
                 continue
-            #pct = stock_data_dict[sym].at[date, 'score_percentile']
-            pct = float(pct.iloc[0])  # 直接转 float，若 Series 会报错，但可提前暴露问题
             
             # 更新信号计数
             if pct < params.signal_threshold_low:
                 signal_count[sym]['buy'] += 1
-                signal_count[sym]['sell'] = 0  # 重置反向计数
+                signal_count[sym]['sell'] = 0
             elif pct > params.signal_threshold_high:
                 signal_count[sym]['sell'] += 1
                 signal_count[sym]['buy'] = 0
@@ -121,68 +109,146 @@ def run_backtest(stock_data_dict, params):
                 signal_count[sym]['buy'] = 0
                 signal_count[sym]['sell'] = 0
             
-            # 判断是否触发信号
             if signal_count[sym]['buy'] >= params.consecutive_days:
                 buy_signals.append(sym)
             if signal_count[sym]['sell'] >= params.consecutive_days:
                 sell_signals.append(sym)
         
-        # --- 2.3 先处理卖出（释放资金）---
+        # --- 2.3 先处理平仓（反向信号）---
+        # 平多仓
         for sym in sell_signals:
-            if sym in portfolio['positions']:
+            if sym in portfolio['positions'] and portfolio['positions'][sym]['shares'] > 0:
                 shares = portfolio['positions'][sym]['shares']
-                price = stock_data_dict[sym].loc[date, 'Close'].iloc[0]
+                price_val = stock_data_dict[sym].loc[date, 'Close']
+                if isinstance(price_val, pd.Series):
+                    price_val = price_val.iloc[-1]
+                price = float(price_val)
                 proceeds = shares * price
                 commission = proceeds * params.commission_rate
                 portfolio['cash'] += proceeds - commission
-                
                 portfolio['trades'].append({
-                    'date': date,
-                    'symbol': sym,
-                    'action': 'SELL',
-                    'shares': shares,
-                    'price': price,
-                    'commission': commission
+                    'date': date, 'symbol': sym, 'action': 'SELL',
+                    'shares': shares, 'price': price, 'commission': commission
                 })
-                
                 del portfolio['positions'][sym]
         
-        # --- 2.4 再处理买入（使用当前可用现金）---
+        # 平空仓
+        for sym in buy_signals:
+            if sym in portfolio['positions'] and portfolio['positions'][sym]['shares'] < 0:
+                short_shares = -portfolio['positions'][sym]['shares']  # 正数
+                price_val = stock_data_dict[sym].loc[date, 'Close']
+                if isinstance(price_val, pd.Series):
+                    price_val = price_val.iloc[-1]
+                price = float(price_val)
+                cost = short_shares * price
+                commission = cost * params.commission_rate
+                portfolio['cash'] -= cost + commission
+                portfolio['trades'].append({
+                    'date': date, 'symbol': sym, 'action': 'BUY_TO_COVER',
+                    'shares': short_shares, 'price': price, 'commission': commission
+                })
+                del portfolio['positions'][sym]
+        
+        # --- 2.4 再处理开仓/加仓 ---
+        # 处理买入/做多
         if buy_signals:
-            # 计算每只股票可分配的最大金额
-            max_per_stock = params.total_capital * params.max_position_per_stock
-            alloc_per_stock = min(portfolio['cash'] / len(buy_signals), max_per_stock)
-            
             for sym in buy_signals:
-                if sym not in portfolio['positions']:  # 避免重复买入
-                    price = float(stock_data_dict[sym].loc[date, 'Close'].iloc[0])
-                    amount_to_invest = float(min(alloc_per_stock, portfolio['cash']))
+                if sym in portfolio['positions'] and portfolio['positions'][sym]['shares'] < 0:
+                    continue  # 应已平空，安全跳过
+                
+                price_val = stock_data_dict[sym].loc[date, 'Close']
+                if isinstance(price_val, pd.Series):
+                    price_val = price_val.iloc[-1]
+                price = float(price_val)
+                
+                max_allowed_value = params.max_position_per_stock * current_equity
+                current_value = 0.0
+                if sym in portfolio['positions']:
+                    current_value = portfolio['positions'][sym]['shares'] * price
+                
+                remaining_capacity = max_allowed_value - current_value
+                alloc_per_stock = portfolio['cash'] / len(buy_signals)
+                amount_to_invest = min(alloc_per_stock, remaining_capacity)
+                
+                if amount_to_invest > price and portfolio['cash'] > 0:
+                    new_shares = int(amount_to_invest // price)
+                    if new_shares <= 0:
+                        continue
                     
-                    if amount_to_invest > price:  # 至少买1股
-                        shares = int(amount_to_invest // price)
-                        cost = shares * price
-                        commission = cost * params.commission_rate
-                        total_cost = cost + commission
+                    cost = new_shares * price
+                    commission = cost * params.commission_rate
+                    total_cost = cost + commission
+                    
+                    if total_cost <= portfolio['cash']:
+                        portfolio['cash'] -= total_cost
                         
-                        if total_cost <= portfolio['cash']:
-                            portfolio['cash'] -= total_cost
+                        if sym in portfolio['positions']:
+                            old_shares = portfolio['positions'][sym]['shares']
+                            old_cost_basis = old_shares * portfolio['positions'][sym]['entry_price']
+                            new_cost_basis = new_shares * price
+                            avg_price = (old_cost_basis + new_cost_basis) / (old_shares + new_shares)
+                            portfolio['positions'][sym]['shares'] += new_shares
+                            portfolio['positions'][sym]['entry_price'] = avg_price
+                            action = 'ADD'
+                        else:
                             portfolio['positions'][sym] = {
-                                'shares': shares,
+                                'shares': new_shares,
                                 'entry_price': price
                             }
-                            
-                            portfolio['trades'].append({
-                                'date': date,
-                                'symbol': sym,
-                                'action': 'BUY',
-                                'shares': shares,
-                                'price': price,
-                                'commission': commission
-                            })
+                            action = 'BUY'
+                        
+                        portfolio['trades'].append({
+                            'date': date, 'symbol': sym, 'action': action,
+                            'shares': new_shares, 'price': price, 'commission': commission
+                        })
+        
+        # 处理卖出/做空
+        if sell_signals:
+            for sym in sell_signals:
+                if sym in portfolio['positions'] and portfolio['positions'][sym]['shares'] > 0:
+                    continue  # 应已平多，安全跳过
+                
+                price_val = stock_data_dict[sym].loc[date, 'Close']
+                if isinstance(price_val, pd.Series):
+                    price_val = price_val.iloc[-1]
+                price = float(price_val)
+                
+                max_allowed_value = params.max_position_per_stock * current_equity
+                current_short_value = 0.0
+                if sym in portfolio['positions']:
+                    current_short_value = -portfolio['positions'][sym]['shares'] * price  # 空头市值（正数）
+                
+                remaining_capacity = max_allowed_value - current_short_value
+                # 做空额度：简化使用固定比例或剩余容量
+                amount_to_short = remaining_capacity
+                
+                if amount_to_short > price:
+                    new_shares = int(amount_to_short // price)
+                    if new_shares <= 0:
+                        continue
+                    
+                    proceeds = new_shares * price
+                    commission = proceeds * params.commission_rate
+                    portfolio['cash'] += proceeds - commission
+                    
+                    if sym in portfolio['positions']:
+                        portfolio['positions'][sym]['shares'] -= new_shares
+                        action = 'ADD_SHORT'
+                    else:
+                        portfolio['positions'][sym] = {
+                            'shares': -new_shares,
+                            'entry_price': price
+                        }
+                        action = 'SELL_SHORT'
+                    
+                    portfolio['trades'].append({
+                        'date': date, 'symbol': sym, 'action': action,
+                        'shares': new_shares, 'price': price, 'commission': commission
+                    })
     
-    # === 3. 转换历史记录为 DataFrame ===
+    # === 3. 返回结果 ===
     history_df = pd.DataFrame(portfolio['history']).set_index('date')
-    return history_df, portfolio['trades'], portfolio['positions']
+    return history_df[['value', 'cash']], portfolio['trades'], portfolio['positions']
 
 def prepare_stock_data_dict(symbols, start_date, end_date, interval="1d"):
     stock_data_dict = {}
@@ -207,12 +273,12 @@ def prepare_stock_data_dict(symbols, start_date, end_date, interval="1d"):
                 continue
             df = df.loc[first_valid:].copy()
 
-            def rolling_pct(x):
-                return percentileofscore(x, x.iloc[-1], kind='mean') / 100.0
+            def rolling_pct_rank(x):
+                return pd.Series(x).rank(pct=True).iloc[-1]
 
             df['score_percentile'] = df['obos_score'].rolling(
                 window=60, min_periods=30
-            ).apply(rolling_pct, raw=False)
+            ).apply(rolling_pct_rank, raw=False)
 
             # 在计算完 score_percentile 后
             df['score_percentile'] = pd.to_numeric(df['score_percentile'], errors='coerce')
@@ -275,7 +341,6 @@ def plot_performance(perf_result, title="Strategy Performance"):
     
     # === 修复：提取回撤区间内的完整 x 和 y ===
     if pd.notna(dd_start) and pd.notna(dd_end):
-        # 确保 dd_end >= dd_start
         mask = (nav.index >= dd_start) & (nav.index <= dd_end)
         if mask.any():
             x_fill = nav.index[mask]
@@ -435,20 +500,12 @@ def analyze_single_stock(symbol, start, end,interval):
         df = calculate_indicators(df)
         df['obos_score'] = calculate_obos_score(df)
         td_signal = check_td_nine(df)
-        def rolling_zscore_last(x):
-            if len(x) < 2:
-                return np.nan
-            zs = zscore(x, nan_policy='omit')
-            return zs[-1] if not np.isnan(zs[-1]) else np.nan
-
-        # 替换上面的 Z-Score 计算部分为：
         def rolling_pct_rank(x):
             return pd.Series(x).rank(pct=True).iloc[-1]
         
         df['obos_score_pct'] = df['obos_score'].rolling(window=60, min_periods=30).apply(
             rolling_pct_rank, raw=False
         )
-        # 然后返回 'score_pct': float(latest['obos_score_pct'])
 
         latest = df.iloc[-1]
         return {
@@ -458,7 +515,7 @@ def analyze_single_stock(symbol, start, end,interval):
             'j': float(latest['j']),
             'bb_position': float(latest['bb_position']),
             'score': float(latest['obos_score']),
-            'score_pct': float(latest['obos_score_pct']),  # ← 新增字段 either 'obos_score_pct' or 'obos_score_pct'
+            'score_pct': float(latest['obos_score_pct']),
             'td_buy': td_signal['buy'],
             'td_sell': td_signal['sell'],
             'td_buy_count': td_signal['buy_count'],
@@ -525,7 +582,6 @@ with col2:
     months_back = st.slider("Lookback Months", 1, 24, 6)
 
 with col3:
-    # 👇 新增：下拉菜单选择 interval
     interval = st.selectbox(
         "Data Interval",
         options=["1d", "1wk"],
@@ -637,34 +693,28 @@ if st.button("📊 Analyze All", type="primary"):
         pos_df.index.name = 'Ticker'
         pos_df = pos_df.rename(columns={'shares': 'shares', 'entry_price': 'entry_price'})
         pos_df['current_price'] = pos_df.index.map(
-            lambda sym: stock_data_dict[sym].iloc[-1]['Close'].iloc[0] 
+            lambda sym: stock_data_dict[sym].iloc[-1]['Close']
             if sym in stock_data_dict else "N/A"
         )
         pos_df['current_MV'] = pos_df['shares'] * pos_df['current_price']
         # 计算总持仓市值（不含现金）
-        total_position_value = pos_df['current_MV'].sum()
+        total_position_value = pos_df['current_MV'].abs().sum()  # 注意：空头市值取绝对值
         
-        # 计算占比（百分比）
-        pos_df['position %'] = pos_df['current_MV'] / total_position_value if total_position_value > 0 else 0.0
+        # 计算占总仓位（equity）的百分比
+        total_equity = result_backtest['portfolio_history']['value'].iloc[-1]
+        pos_df['position %'] = pos_df['current_MV'].abs() / total_equity if total_equity > 0 else 0.0
         
         # 只显示需要的列
         display_df = pos_df[['shares', 'entry_price', 'current_price', 'position %']].copy()
-    
-
         
         st.dataframe(display_df.style.format({
+            'shares': "{:+,.0f}",      # 显示 +100 / -50
             'entry_price': "{:.2f}",
             'current_price': "{:.2f}",
             'position %': "{:.1%}"
         }))
     else:
         st.info("📭 回测结束时无持仓")
-    
-    # === 4. （可选）交易记录 ===
-    # st.subheader("📜 最近交易记录")
-    # trades_df = pd.DataFrame(result_backtest['trades'])
-    # if not trades_df.empty:
-    #     st.dataframe(trades_df.tail(10))
     
     # 分析所有股票
     results = []
@@ -684,15 +734,6 @@ if st.button("📊 Analyze All", type="primary"):
         # 显示汇总表
         st.subheader(f"📈 Result ( {len(results)} Stocks)")
         
-        # 格式化 TD 信号
-        def format_td(row):
-            signals = []
-            if row['td_buy']:
-                signals.append(f"🟢 TD Buy ({int(row['td_buy_count'])})")
-            if row['td_sell']:
-                signals.append(f"🔴 TD Sell ({int(row['td_sell_count'])})")
-            return "; ".join(signals) if signals else "—"
-        
         # 选择需要的列，包括 TD 计数
         df_display = df_results[[
             'symbol', 'score', 'score_pct', 'td_buy_count', 'td_sell_count', 'rsi', 'j', 'bb_position'
@@ -703,10 +744,7 @@ if st.button("📊 Analyze All", type="primary"):
             'Ticker', 'Score', 'Score in Percentile', 'TD Buy', 'TD Sell', 'RSI', 'KDJ-J', 'Bollinger%']
         
 
-
-        # 使用背景色渐变突出评分 / 无matplot
         st.dataframe(df_display, use_container_width=True, height=500)
-
 
     
     with st.expander("Check the Score & Price Trend of Each Ticker. Apart from showing the technical score, we highlight the Overbought(red) / Oversold(green) area by using the rolling 60 days techncial score percentile (ranging from 0 to 1)"):
@@ -757,5 +795,3 @@ if st.button("📊 Analyze All", type="primary"):
             
             st.pyplot(fig)
             plt.close(fig)
-
-        
