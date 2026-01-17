@@ -757,38 +757,38 @@ if st.button("📊 Analyze All", type="primary"):
         st.subheader(f"📈 Result ( {len(results)} Stocks)")
         st.dataframe(df_display, use_container_width=True, height=500)
 
-    with st.expander("Check the Score & Price Trend of Each Ticker. Apart from showing the technical score, we highlight the Overbought(red) / Oversold(green) area by using the rolling 60 days techncial score percentile (ranging from 0 to 1)"):
-        for result in results:
-            st.markdown(f"### {result['symbol']}")
-            hist = result['history'].dropna()
-            if len(hist) < 10:
-                st.write("⚠️ Not Enough Data (Need at least 10 data points)")
-                continue
-            hist_plot = hist
-            fig, ax1 = plt.subplots(figsize=(10, 4))
-            ax1.plot(hist_plot.index, hist_plot['obos_score'], color='red', linewidth=1.5)
-            ax1.set_ylabel('Technical Score ', color='red')
-            ax1.tick_params(axis='y', labelcolor='red')
-            ax1.set_ylim(0, 100)
-            ax1.axhline(90, color='orange', linestyle='--', alpha=0.6)
-            ax1.axhline(10, color='green', linestyle='--', alpha=0.6)
-            ax1.grid(True, linestyle='--', alpha=0.3)
-            dates = hist_plot.index
-            overbought = hist_plot['obos_score_pct'] > 0.9
-            ax1.fill_between(dates, 0, 100, where=overbought, 
-                             color='red', alpha=0.2, label='Overbought (pct > 0.9)')
-            oversold = hist_plot['obos_score_pct'] < 0.1
-            ax1.fill_between(dates, 0, 100, where=oversold, 
-                             color='green', alpha=0.2, label='Oversold (pct < 0.1)')
-            ax2 = ax1.twinx()
-            ax2.plot(hist_plot.index, hist_plot['Close'], color='blue', linewidth=1.5)
-            ax2.set_ylabel('Price', color='blue')
-            ax2.tick_params(axis='y', labelcolor='blue')
-            ax1.set_title(f"{result['symbol']} — Technical Score (Red, LHS) vs Price (Blue, RHS)", fontsize=12)
-            fig.autofmt_xdate()
-            fig.tight_layout()
-            st.pyplot(fig)
-            plt.close(fig)
+    st.caption("Check the Score & Price Trend of Each Ticker. Apart from showing the technical score, we highlight the Overbought(red) / Oversold(green) area by using the rolling 60 days techncial score percentile (ranging from 0 to 1)"):
+    for result in results:
+        st.markdown(f"### {result['symbol']}")
+        hist = result['history'].dropna()
+        if len(hist) < 10:
+            st.write("⚠️ Not Enough Data (Need at least 10 data points)")
+            continue
+        hist_plot = hist
+        fig, ax1 = plt.subplots(figsize=(10, 4))
+        ax1.plot(hist_plot.index, hist_plot['obos_score'], color='red', linewidth=1.5)
+        ax1.set_ylabel('Technical Score ', color='red')
+        ax1.tick_params(axis='y', labelcolor='red')
+        ax1.set_ylim(0, 100)
+        ax1.axhline(90, color='orange', linestyle='--', alpha=0.6)
+        ax1.axhline(10, color='green', linestyle='--', alpha=0.6)
+        ax1.grid(True, linestyle='--', alpha=0.3)
+        dates = hist_plot.index
+        overbought = hist_plot['obos_score_pct'] > 0.9
+        ax1.fill_between(dates, 0, 100, where=overbought, 
+                         color='red', alpha=0.2, label='Overbought (pct > 0.9)')
+        oversold = hist_plot['obos_score_pct'] < 0.1
+        ax1.fill_between(dates, 0, 100, where=oversold, 
+                         color='green', alpha=0.2, label='Oversold (pct < 0.1)')
+        ax2 = ax1.twinx()
+        ax2.plot(hist_plot.index, hist_plot['Close'], color='blue', linewidth=1.5)
+        ax2.set_ylabel('Price', color='blue')
+        ax2.tick_params(axis='y', labelcolor='blue')
+        ax1.set_title(f"{result['symbol']} — Technical Score (Red, LHS) vs Price (Blue, RHS)", fontsize=12)
+        fig.autofmt_xdate()
+        fig.tight_layout()
+        st.pyplot(fig)
+        plt.close(fig)
     
 
 # ========== 回测功能（默认折叠）==========
