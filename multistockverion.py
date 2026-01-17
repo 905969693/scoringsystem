@@ -715,12 +715,12 @@ if st.button("📊 Analyze All", type="primary"):
     
         # 只显示需要的列
         display_df = pos_df[['shares', 'entry_price', 'current_price', 'position %']].copy()
-        
+        #在下面不显示'position %': "{:.1%}"
         st.dataframe(display_df.style.format({
             'shares': "{:+,.0f}",      # 显示 +100 / -50
             'entry_price': "{:.2f}",
-            'current_price': "{:.2f}",
-            'position %': "{:.1%}"
+            'current_price': "{:.2f}"
+            
         }))
     else:
         st.info("📭 回测结束时无持仓")
