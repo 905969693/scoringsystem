@@ -569,7 +569,7 @@ def analyze_single_stock(symbol, start, end, interval):
 
 
 # ========== Streamlit 界面 ==========
-st.set_page_config(page_title="Stock Scoring System", layout="wide")
+st.set_page_config(page_title="Scoring & Backtesting System", layout="wide")
 
 # 设置字体大小
 st.markdown("""
