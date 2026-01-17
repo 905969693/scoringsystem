@@ -20,7 +20,7 @@ class StrategyParams:
                  consecutive_days=2,
                  max_position_per_stock=0.15,  # 单票最大仓位比例（占权益）
                  total_capital=1_000_000,
-                 commission_rate=0.001,        # 佣金率
+                 commission_rate=0.000,        # 佣金率
                  risk_free_rate=0.02,          # 年化无风险利率
                  max_gross_exposure=2.0):      # 最大总杠杆（多+空 ≤ 2.0 × equity）
         self.lookback_window = lookback_window
@@ -756,7 +756,7 @@ if st.button("📊 Analyze All", type="primary"):
         trades_df = trades_df.sort_values('Date', ascending=False).reset_index(drop=True)
         
         st.dataframe(
-            trades_df[['Date', 'Ticker', 'Action', 'Shares', 'Price', 'Commission']],
+            trades_df[['Date', 'Ticker', 'Action', 'Shares', 'Price']],
             use_container_width=True,
             height=400
         )
