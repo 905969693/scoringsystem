@@ -48,7 +48,7 @@ if 'watchlist' not in st.session_state:
 
 # Input area
 col1, col2, col3 = st.columns([3, 1, 1])
-ticker_list = "QQQ, SPY, TLT, GLD, USDJPY=X"
+ticker_list = "QQQ, SPY, TLT, GLD, USO"
 
 with col1:
     symbols_input = st.text_input(
