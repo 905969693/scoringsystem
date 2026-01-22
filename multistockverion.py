@@ -172,9 +172,9 @@ if st.button("📊 Analyze All", type="primary"):
             ax1.grid(True, linestyle='--', alpha=0.3)
             
             dates = hist_plot.index
-            overbought = hist_plot['obos_score_pct'] > 0.9
+            overbought = hist_plot['obos_score_pct'] > 0.95
             ax1.fill_between(dates, 0, 100, where=overbought, 
-                             color='red', alpha=0.2, label='Overbought (pct > 0.9)')
+                             color='red', alpha=0.2, label='Overbought (pct > 0.95)')
             oversold = hist_plot['obos_score_pct'] < 0.1
             ax1.fill_between(dates, 0, 100, where=oversold, 
                              color='green', alpha=0.2, label='Oversold (pct < 0.1)')
