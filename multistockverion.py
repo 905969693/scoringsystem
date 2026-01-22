@@ -183,6 +183,19 @@ if st.button("📊 Analyze All", type="primary"):
             ax1.fill_between(dates, 0, 100, where=oversold, 
                              color='green', alpha=0.2, label='Oversold (pct < 0.1)')
             
+            # Add strong trend visualization
+            if 'regime' in hist_plot.columns and 'trend_direction' in hist_plot.columns:
+                strong_trend = hist_plot['regime'] == 'STRONG_TREND'
+                strong_uptrend = strong_trend & (hist_plot['trend_direction'] == 'UPTREND')
+                strong_downtrend = strong_trend & (hist_plot['trend_direction'] == 'DOWNTREND')
+                
+                # Light blue for strong uptrends
+                ax1.fill_between(dates, 0, 100, where=strong_uptrend,
+                               color='cyan', alpha=0.12, label='Strong Uptrend')
+                # Light orange for strong downtrends
+                ax1.fill_between(dates, 0, 100, where=strong_downtrend,
+                               color='orange', alpha=0.12, label='Strong Downtrend')
+            
             ax2 = ax1.twinx()
             ax2.plot(hist_plot.index, hist_plot['Close'], color='blue', linewidth=1.5)
             ax2.set_ylabel('Price', color='blue')
