@@ -19,7 +19,7 @@ def fetch_stock_data(symbol, start, end, interval="1d"):
 
 def detect_trend(df):
     """
-    Detect trend direction, strength, and regime using MA crossover, ADX, and MACD.
+    Detect trend direction, strength, and regime using MA crossover and ADX.
     
     Args:
         df: DataFrame with trend indicators (sma20, sma50, adx, plus_di, minus_di, macd, macd_signal, Close)
@@ -28,7 +28,7 @@ def detect_trend(df):
         dict with keys:
             - trend_direction: 'UPTREND', 'DOWNTREND', or 'RANGE'
             - trend_strength: ADX value (0-100, or None if insufficient data)
-            - regime: 'STRONG_TREND', 'WEAK_TREND', or 'RANGING'
+            - regime: 'STRONG_TREND' or 'RANGING'
     """
     if df.empty or len(df) < 50:  # Need at least 50 periods for SMA50
         return {
@@ -44,49 +44,24 @@ def detect_trend(df):
     sma20 = latest.get('sma20', np.nan)
     sma50 = latest.get('sma50', np.nan)
     adx = latest.get('adx', np.nan)
-    plus_di = latest.get('plus_di', np.nan)
-    minus_di = latest.get('minus_di', np.nan)
-    macd = latest.get('macd', np.nan)
-    macd_signal = latest.get('macd_signal', np.nan)
     
-    # Determine trend direction using MA crossover + MACD
+    # Determine trend direction using MA crossover only (no MACD confirmation)
     trend_direction = 'RANGE'
     
-    # Check if we have valid MA values
     if not (pd.isna(price) or pd.isna(sma20) or pd.isna(sma50)):
-        # Uptrend: Price > SMA20 > SMA50 and MACD > Signal
         if price > sma20 > sma50:
-            if not (pd.isna(macd) or pd.isna(macd_signal)):
-                if macd > macd_signal:
-                    trend_direction = 'UPTREND'
-                else:
-                    # MA suggests uptrend but MACD doesn't confirm
-                    trend_direction = 'RANGE'
-            else:
-                # MACD not available, use MA only
-                trend_direction = 'UPTREND'
-        # Downtrend: Price < SMA20 < SMA50 and MACD < Signal
+            trend_direction = 'UPTREND'
         elif price < sma20 < sma50:
-            if not (pd.isna(macd) or pd.isna(macd_signal)):
-                if macd < macd_signal:
-                    trend_direction = 'DOWNTREND'
-                else:
-                    # MA suggests downtrend but MACD doesn't confirm
-                    trend_direction = 'RANGE'
-            else:
-                # MACD not available, use MA only
-                trend_direction = 'DOWNTREND'
+            trend_direction = 'DOWNTREND'
     
-    # Determine trend strength and regime using ADX
+    # Determine trend strength and regime using ADX (lowered threshold: 20)
     trend_strength = None
     regime = 'RANGING'
     
     if not pd.isna(adx):
         trend_strength = float(adx)
-        if adx > 25:
+        if adx >= 20:
             regime = 'STRONG_TREND'
-        elif adx >= 20:
-            regime = 'WEAK_TREND'
         else:
             regime = 'RANGING'
     
