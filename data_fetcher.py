@@ -17,6 +17,86 @@ def fetch_stock_data(symbol, start, end, interval="1d"):
     return data
 
 
+def detect_trend(df):
+    """
+    Detect trend direction, strength, and regime using MA crossover, ADX, and MACD.
+    
+    Args:
+        df: DataFrame with trend indicators (sma20, sma50, adx, plus_di, minus_di, macd, macd_signal, Close)
+        
+    Returns:
+        dict with keys:
+            - trend_direction: 'UPTREND', 'DOWNTREND', or 'RANGE'
+            - trend_strength: ADX value (0-100, or None if insufficient data)
+            - regime: 'STRONG_TREND', 'WEAK_TREND', or 'RANGING'
+    """
+    if df.empty or len(df) < 50:  # Need at least 50 periods for SMA50
+        return {
+            'trend_direction': 'RANGE',
+            'trend_strength': None,
+            'regime': 'RANGING'
+        }
+    
+    latest = df.iloc[-1]
+    
+    # Get required values, handling NaN
+    price = latest.get('Close', np.nan)
+    sma20 = latest.get('sma20', np.nan)
+    sma50 = latest.get('sma50', np.nan)
+    adx = latest.get('adx', np.nan)
+    plus_di = latest.get('plus_di', np.nan)
+    minus_di = latest.get('minus_di', np.nan)
+    macd = latest.get('macd', np.nan)
+    macd_signal = latest.get('macd_signal', np.nan)
+    
+    # Determine trend direction using MA crossover + MACD
+    trend_direction = 'RANGE'
+    
+    # Check if we have valid MA values
+    if not (pd.isna(price) or pd.isna(sma20) or pd.isna(sma50)):
+        # Uptrend: Price > SMA20 > SMA50 and MACD > Signal
+        if price > sma20 > sma50:
+            if not (pd.isna(macd) or pd.isna(macd_signal)):
+                if macd > macd_signal:
+                    trend_direction = 'UPTREND'
+                else:
+                    # MA suggests uptrend but MACD doesn't confirm
+                    trend_direction = 'RANGE'
+            else:
+                # MACD not available, use MA only
+                trend_direction = 'UPTREND'
+        # Downtrend: Price < SMA20 < SMA50 and MACD < Signal
+        elif price < sma20 < sma50:
+            if not (pd.isna(macd) or pd.isna(macd_signal)):
+                if macd < macd_signal:
+                    trend_direction = 'DOWNTREND'
+                else:
+                    # MA suggests downtrend but MACD doesn't confirm
+                    trend_direction = 'RANGE'
+            else:
+                # MACD not available, use MA only
+                trend_direction = 'DOWNTREND'
+    
+    # Determine trend strength and regime using ADX
+    trend_strength = None
+    regime = 'RANGING'
+    
+    if not pd.isna(adx):
+        trend_strength = float(adx)
+        if adx > 25:
+            regime = 'STRONG_TREND'
+        elif adx >= 20:
+            regime = 'WEAK_TREND'
+        else:
+            regime = 'RANGING'
+    
+    return {
+        'trend_direction': trend_direction,
+        'trend_strength': trend_strength,
+        'regime': regime
+    }
+
+
 def calculate_indicators(df):
     """
     Calculate technical indicators: RSI, KDJ, Bollinger Bands, Volume, Momentum.
@@ -136,5 +216,21 @@ def calculate_indicators(df):
     
     # Combined momentum score
     df['momentum_score'] = (df['macd_score'] * 0.6 + df['roc_score'] * 0.4)
+    
+    # NEW: Trend indicators
+    # Moving Averages (20-day and 50-day SMA)
+    df['sma20'] = talib.SMA(close, timeperiod=20)
+    df['sma50'] = talib.SMA(close, timeperiod=50)
+    
+    # ADX (Average Directional Index) for trend strength
+    # ADX requires at least 14 periods, but we'll use 14 as default
+    adx_period = 14
+    df['adx'] = talib.ADX(high, low, close, timeperiod=adx_period)
+    df['plus_di'] = talib.PLUS_DI(high, low, close, timeperiod=adx_period)
+    df['minus_di'] = talib.MINUS_DI(high, low, close, timeperiod=adx_period)
+    
+    # Store MACD and signal line for trend direction (already calculated above)
+    df['macd'] = macd
+    df['macd_signal'] = signal
     
     return df
