@@ -4,7 +4,7 @@ Backtesting engine for the scoring strategy.
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-from data_fetcher import fetch_stock_data, calculate_indicators
+from data_fetcher import fetch_stock_data, calculate_indicators, detect_trend
 from scoring import calculate_obos_score
 
 
@@ -13,8 +13,8 @@ class StrategyParams:
     def __init__(self,
                  lookback_window=60,
                  signal_threshold_low=0.10,
-                 signal_threshold_high=0.90,
-                 consecutive_days=2,
+                 signal_threshold_high=0.95,
+                 consecutive_days=3,
                  max_position_per_stock=0.15,
                  total_capital=1_000_000,
                  commission_rate=0.001,
@@ -38,7 +38,7 @@ def prepare_stock_data_dict(symbols, start_date, end_date, interval="1d"):
     Prepare stock data dictionary for backtesting.
     
     Returns:
-        dict: {symbol: DataFrame with Close, obos_score, score_percentile}
+        dict: {symbol: DataFrame with Close, obos_score, score_percentile, trend_direction, regime, trend_strength}
     """
     stock_data_dict = {}
     for sym in symbols:
@@ -76,7 +76,24 @@ def prepare_stock_data_dict(symbols, start_date, end_date, interval="1d"):
                 continue
             df = df.loc[first_valid_pct:].copy()
 
-            stock_data_dict[sym] = df[['Close', 'obos_score', 'score_percentile']].copy()
+            # Calculate trend information for each date
+            # For each date, use data up to that date to determine trend
+            trend_directions = []
+            regimes = []
+            trend_strengths = []
+            
+            for date in df.index:
+                df_upto_date = df.loc[:date].copy()
+                trend_info = detect_trend(df_upto_date)
+                trend_directions.append(trend_info['trend_direction'])
+                regimes.append(trend_info['regime'])
+                trend_strengths.append(trend_info['trend_strength'])
+            
+            df['trend_direction'] = trend_directions
+            df['regime'] = regimes
+            df['trend_strength'] = trend_strengths
+
+            stock_data_dict[sym] = df[['Close', 'obos_score', 'score_percentile', 'trend_direction', 'regime', 'trend_strength']].copy()
 
         except Exception as e:
             print(f"⚠️ 跳过 {sym}: {str(e)[:60]}")
@@ -133,6 +150,64 @@ def run_backtest(stock_data_dict, params):
             'cash': portfolio['cash']
         })
         
+        # Force close counter-trend positions in STRONG_TREND regime
+        for sym in symbols:
+            if date not in stock_data_dict[sym].index:
+                continue
+            
+            if sym not in portfolio['positions']:
+                continue
+            
+            try:
+                regime_val = stock_data_dict[sym].loc[date, 'regime']
+                trend_dir_val = stock_data_dict[sym].loc[date, 'trend_direction']
+                
+                if isinstance(regime_val, pd.Series):
+                    regime_val = regime_val.iloc[-1]
+                if isinstance(trend_dir_val, pd.Series):
+                    trend_dir_val = trend_dir_val.iloc[-1]
+                
+                regime = str(regime_val) if pd.notna(regime_val) else 'RANGING'
+                trend_dir = str(trend_dir_val) if pd.notna(trend_dir_val) else 'RANGE'
+            except Exception:
+                # If trend data is missing, skip force-close (backward compatible)
+                continue
+            
+            if regime == 'STRONG_TREND':
+                position = portfolio['positions'][sym]
+                shares = position['shares']
+                
+                # Force close shorts in uptrend
+                if trend_dir == 'UPTREND' and shares < 0:
+                    price_val = stock_data_dict[sym].loc[date, 'Close']
+                    if isinstance(price_val, pd.Series):
+                        price_val = price_val.iloc[-1]
+                    price = float(price_val)
+                    short_shares = -shares
+                    cost = short_shares * price
+                    commission = cost * params.commission_rate
+                    portfolio['cash'] -= cost + commission
+                    portfolio['trades'].append({
+                        'date': date, 'symbol': sym, 'action': 'FORCE_CLOSE_SHORT',
+                        'shares': short_shares, 'price': price, 'commission': commission
+                    })
+                    del portfolio['positions'][sym]
+                
+                # Force close longs in downtrend
+                elif trend_dir == 'DOWNTREND' and shares > 0:
+                    price_val = stock_data_dict[sym].loc[date, 'Close']
+                    if isinstance(price_val, pd.Series):
+                        price_val = price_val.iloc[-1]
+                    price = float(price_val)
+                    proceeds = shares * price
+                    commission = proceeds * params.commission_rate
+                    portfolio['cash'] += proceeds - commission
+                    portfolio['trades'].append({
+                        'date': date, 'symbol': sym, 'action': 'FORCE_CLOSE_LONG',
+                        'shares': shares, 'price': price, 'commission': commission
+                    })
+                    del portfolio['positions'][sym]
+        
         # Check signals
         buy_signals = []
         sell_signals = []
@@ -164,6 +239,66 @@ def run_backtest(stock_data_dict, params):
                 buy_signals.append(sym)
             if signal_count[sym]['sell'] >= params.consecutive_days:
                 sell_signals.append(sym)
+        
+        # Filter out counter-trend signals in STRONG_TREND regime
+        filtered_buy_signals = []
+        filtered_sell_signals = []
+        
+        for sym in buy_signals:
+            if date not in stock_data_dict[sym].index:
+                continue
+            
+            try:
+                regime_val = stock_data_dict[sym].loc[date, 'regime']
+                trend_dir_val = stock_data_dict[sym].loc[date, 'trend_direction']
+                
+                if isinstance(regime_val, pd.Series):
+                    regime_val = regime_val.iloc[-1]
+                if isinstance(trend_dir_val, pd.Series):
+                    trend_dir_val = trend_dir_val.iloc[-1]
+                
+                regime = str(regime_val) if pd.notna(regime_val) else 'RANGING'
+                trend_dir = str(trend_dir_val) if pd.notna(trend_dir_val) else 'RANGE'
+            except Exception:
+                # If trend data is missing, allow signal (backward compatible)
+                filtered_buy_signals.append(sym)
+                continue
+            
+            # Block new longs in strong downtrend
+            if regime == 'STRONG_TREND' and trend_dir == 'DOWNTREND':
+                continue  # Skip this buy signal
+            
+            filtered_buy_signals.append(sym)
+        
+        for sym in sell_signals:
+            if date not in stock_data_dict[sym].index:
+                continue
+            
+            try:
+                regime_val = stock_data_dict[sym].loc[date, 'regime']
+                trend_dir_val = stock_data_dict[sym].loc[date, 'trend_direction']
+                
+                if isinstance(regime_val, pd.Series):
+                    regime_val = regime_val.iloc[-1]
+                if isinstance(trend_dir_val, pd.Series):
+                    trend_dir_val = trend_dir_val.iloc[-1]
+                
+                regime = str(regime_val) if pd.notna(regime_val) else 'RANGING'
+                trend_dir = str(trend_dir_val) if pd.notna(trend_dir_val) else 'RANGE'
+            except Exception:
+                # If trend data is missing, allow signal (backward compatible)
+                filtered_sell_signals.append(sym)
+                continue
+            
+            # Block new shorts in strong uptrend
+            if regime == 'STRONG_TREND' and trend_dir == 'UPTREND':
+                continue  # Skip this sell signal
+            
+            filtered_sell_signals.append(sym)
+        
+        # Use filtered signals
+        buy_signals = filtered_buy_signals
+        sell_signals = filtered_sell_signals
         
         # Close positions (reverse signals)
         # Close long positions
