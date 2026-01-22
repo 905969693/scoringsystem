@@ -3,7 +3,7 @@ OBOS (Overbought/Oversold) scoring and TD Nine signal detection.
 """
 import numpy as np
 import pandas as pd
-from data_fetcher import calculate_indicators, fetch_stock_data
+from data_fetcher import calculate_indicators, fetch_stock_data, detect_trend
 
 
 def calculate_obos_score(df, weights=None, use_enhanced=True):
@@ -155,6 +155,9 @@ def analyze_single_stock(symbol, start, end, interval="1d"):
         df['obos_score'] = calculate_obos_score(df)
         td_signal = check_td_nine(df)
         
+        # Detect trend information
+        trend_info = detect_trend(df)
+        
         def rolling_pct_rank(x):
             return pd.Series(x).rank(pct=True).iloc[-1]
         
@@ -200,6 +203,9 @@ def analyze_single_stock(symbol, start, end, interval="1d"):
             'bb_position': float(latest['bb_position']),
             'score': float(latest['obos_score']),
             'score_pct': float(latest['obos_score_pct']),
+            'trend_direction': trend_info['trend_direction'],
+            'trend_strength': trend_info['trend_strength'],
+            'regime': trend_info['regime'],
             'td_buy': td_signal['buy'],
             'td_sell': td_signal['sell'],
             'td_buy_count': td_signal['buy_count'],
