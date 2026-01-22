@@ -6,29 +6,60 @@ import pandas as pd
 from data_fetcher import calculate_indicators, fetch_stock_data
 
 
-def calculate_obos_score(df, weights=None):
+def calculate_obos_score(df, weights=None, use_enhanced=True):
     """
     Calculate OBOS (Overbought/Oversold) score from technical indicators.
     
     Args:
-        df: DataFrame with RSI, KDJ-J, and BB position columns
-        weights: Dictionary with weights for each indicator (default: RSI 40%, KDJ 30%, BB 30%)
+        df: DataFrame with RSI, KDJ-J, BB position, volume, and momentum columns
+        weights: Dictionary with weights for each indicator
+        use_enhanced: If True, use enhanced scoring with volume and momentum (default: True)
         
     Returns:
         Series with OBOS scores (0-100)
     """
-    if weights is None:
-        weights = {'rsi': 0.4, 'kdj': 0.3, 'bb': 0.3}
-    
-    kdj_score = np.clip(df['j'], 0, 100)
-    rsi_score = df['rsi']
-    bb_score = df['bb_position']
-    
-    score = (
-        weights['rsi'] * rsi_score +
-        weights['kdj'] * kdj_score +
-        weights['bb'] * bb_score
-    ) / sum(weights.values())
+    if use_enhanced:
+        # Enhanced scoring with volume and momentum confirmation
+        if weights is None:
+            weights = {
+                'rsi': 0.25,
+                'kdj': 0.20,
+                'bb': 0.20,
+                'volume': 0.15,
+                'momentum': 0.20
+            }
+        
+        kdj_score = np.clip(df['j'], 0, 100)
+        rsi_score = df['rsi']
+        bb_score = df['bb_position']
+        
+        # Get volume and momentum scores (should be calculated in calculate_indicators)
+        volume_score = df.get('volume_score', pd.Series(50.0, index=df.index))
+        momentum_score = df.get('momentum_score', pd.Series(50.0, index=df.index))
+        
+        # Weighted combination
+        score = (
+            weights['rsi'] * rsi_score +
+            weights['kdj'] * kdj_score +
+            weights['bb'] * bb_score +
+            weights['volume'] * volume_score +
+            weights['momentum'] * momentum_score
+        ) / sum(weights.values())
+        
+    else:
+        # Original scoring (backward compatibility)
+        if weights is None:
+            weights = {'rsi': 0.4, 'kdj': 0.3, 'bb': 0.3}
+        
+        kdj_score = np.clip(df['j'], 0, 100)
+        rsi_score = df['rsi']
+        bb_score = df['bb_position']
+        
+        score = (
+            weights['rsi'] * rsi_score +
+            weights['kdj'] * kdj_score +
+            weights['bb'] * bb_score
+        ) / sum(weights.values())
     
     return np.clip(score, 0, 100)
 
@@ -84,12 +115,43 @@ def analyze_single_stock(symbol, start, end, interval="1d"):
     Returns:
         dict with analysis results or None if failed
     """
+    # #region agent log
+    import json
+    try:
+        with open('/Users/yanyunfeng/文稿/github-quant trading/scoringsystem/.cursor/debug.log', 'a') as f:
+            f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"A","location":"scoring.py:118","message":"analyze_single_stock entry","data":{"symbol":symbol,"start":start,"end":end,"interval":interval},"timestamp":int(__import__('time').time()*1000)}) + '\n')
+    except: pass
+    # #endregion
     try:
         df = fetch_stock_data(symbol, start=start, end=end, interval=interval)
+        # #region agent log
+        try:
+            with open('/Users/yanyunfeng/文稿/github-quant trading/scoringsystem/.cursor/debug.log', 'a') as f:
+                f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"B","location":"scoring.py:121","message":"after fetch_stock_data","data":{"symbol":symbol,"df_empty":df.empty,"df_shape":list(df.shape) if not df.empty else None,"df_columns":list(df.columns) if not df.empty else None},"timestamp":int(__import__('time').time()*1000)}) + '\n')
+        except: pass
+        # #endregion
         if df.empty:
+            # #region agent log
+            try:
+                with open('/Users/yanyunfeng/文稿/github-quant trading/scoringsystem/.cursor/debug.log', 'a') as f:
+                    f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"B","location":"scoring.py:124","message":"df.empty=True, returning None","data":{"symbol":symbol},"timestamp":int(__import__('time').time()*1000)}) + '\n')
+            except: pass
+            # #endregion
             return None
         
+        # #region agent log
+        try:
+            with open('/Users/yanyunfeng/文稿/github-quant trading/scoringsystem/.cursor/debug.log', 'a') as f:
+                f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"C","location":"scoring.py:127","message":"before calculate_indicators","data":{"symbol":symbol,"has_volume":"Volume" in df.columns},"timestamp":int(__import__('time').time()*1000)}) + '\n')
+        except: pass
+        # #endregion
         df = calculate_indicators(df)
+        # #region agent log
+        try:
+            with open('/Users/yanyunfeng/文稿/github-quant trading/scoringsystem/.cursor/debug.log', 'a') as f:
+                f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"C","location":"scoring.py:130","message":"after calculate_indicators","data":{"symbol":symbol,"has_volume_score":"volume_score" in df.columns,"has_momentum_score":"momentum_score" in df.columns},"timestamp":int(__import__('time').time()*1000)}) + '\n')
+        except: pass
+        # #endregion
         df['obos_score'] = calculate_obos_score(df)
         td_signal = check_td_nine(df)
         
@@ -146,6 +208,18 @@ def analyze_single_stock(symbol, start, end, interval="1d"):
             'history': df[['Close', 'obos_score', 'obos_score_pct']].copy()
         }
     except Exception as e:
-        import streamlit as st
-        st.warning(f"⚠️ {symbol} 分析失败: {str(e)[:60]}...")
+        # #region agent log
+        try:
+            with open('/Users/yanyunfeng/文稿/github-quant trading/scoringsystem/.cursor/debug.log', 'a') as f:
+                f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"D","location":"scoring.py:192","message":"exception caught","data":{"symbol":symbol,"exception_type":type(e).__name__,"exception_msg":str(e)[:200]},"timestamp":int(__import__('time').time()*1000)}) + '\n')
+        except: pass
+        # #endregion
+        # Handle errors gracefully - works with or without streamlit
+        error_msg = f"⚠️ {symbol} 分析失败: {str(e)[:60]}..."
+        try:
+            import streamlit as st
+            st.warning(error_msg)
+        except ImportError:
+            # Not in streamlit environment, just print
+            print(error_msg)
         return None
