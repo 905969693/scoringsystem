@@ -196,6 +196,16 @@ def analyze_single_stock(symbol, start, end, interval="1d"):
 
         latest = df.iloc[-1]
         
+        # BUY / HOLD / SELL from OBOS + trend filter (consecutive_days >= 2)
+        action = 'HOLD'
+        if consecutive_days >= 2:
+            if trend_info['regime'] == 'STRONG_TREND' and trend_info['trend_direction'] == 'DOWNTREND':
+                action = 'HOLD'
+            else:
+                action = 'BUY'
+        elif consecutive_days <= -2:
+            action = 'SELL'
+        
         # Calculate trend for each date in history for visualization
         trend_directions = []
         regimes = []
@@ -228,6 +238,7 @@ def analyze_single_stock(symbol, start, end, interval="1d"):
             'td_buy_count': td_signal['buy_count'],
             'td_sell_count': td_signal['sell_count'],
             'consecutive_days': consecutive_days,
+            'action': action,
             'history': df[['Close', 'obos_score', 'obos_score_pct', 'trend_direction', 'regime', 'trend_strength']].copy()
         }
     except Exception as e:
