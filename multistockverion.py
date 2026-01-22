@@ -48,7 +48,7 @@ if 'watchlist' not in st.session_state:
 
 # Input area
 col1, col2, col3 = st.columns([3, 1, 1])
-ticker_list = "QQQ, SPY, TLT, GLD, USO"
+ticker_list = "QQQ, SPY, TLT, GLD, USDJPY=X"
 
 with col1:
     symbols_input = st.text_input(
@@ -144,10 +144,14 @@ if st.button("📊 Analyze All", type="primary"):
     else:
         df_results = pd.DataFrame(results).round(2)
         df_display = df_results[[
-            'symbol', 'score', 'score_pct', 'consecutive_days', 'td_buy_count', 'td_sell_count', 'rsi', 'j', 'bb_position'
+            'symbol', 'score', 'score_pct', 'consecutive_days', 
+            'trend_direction', 'trend_strength', 'regime',
+            'td_buy_count', 'td_sell_count', 'rsi', 'j', 'bb_position'
         ]].copy()
         df_display.columns = [
-            'Ticker', 'Score', 'Score in Percentile', 'Consecutive Signal Days', 'TD Buy', 'TD Sell', 'RSI', 'KDJ-J', 'Bollinger%'
+            'Ticker', 'Score', 'Score in Percentile', 'Consecutive Signal Days',
+            'Trend Direction', 'Trend Strength', 'Regime',
+            'TD Buy', 'TD Sell', 'RSI', 'KDJ-J', 'Bollinger%'
         ]
         st.subheader(f"📈 Result ( {len(results)} Stocks)")
         st.dataframe(df_display, use_container_width=True, height=500)
@@ -172,9 +176,9 @@ if st.button("📊 Analyze All", type="primary"):
             ax1.grid(True, linestyle='--', alpha=0.3)
             
             dates = hist_plot.index
-            overbought = hist_plot['obos_score_pct'] > 0.95
+            overbought = hist_plot['obos_score_pct'] > 0.9
             ax1.fill_between(dates, 0, 100, where=overbought, 
-                             color='red', alpha=0.2, label='Overbought (pct > 0.95)')
+                             color='red', alpha=0.2, label='Overbought (pct > 0.9)')
             oversold = hist_plot['obos_score_pct'] < 0.1
             ax1.fill_between(dates, 0, 100, where=oversold, 
                              color='green', alpha=0.2, label='Oversold (pct < 0.1)')
