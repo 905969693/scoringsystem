@@ -158,6 +158,14 @@ if st.button("📊 Analyze All", type="primary"):
 
     # Individual stock charts
     with st.expander("🔍 Check the Score & Price Trend of Each Ticker (Click to Expand)"):
+        st.markdown("**Color guide**")
+        st.markdown(
+            "- **Red shading**: Overbought (score percentile > 0.9) — contrarian sell signal  \n"
+            "- **Green shading**: Oversold (score percentile < 0.1) — contrarian buy signal  \n"
+            "- **Cyan shading**: Strong uptrend — trend filter blocks new shorts  \n"
+            "- **Orange shading**: Strong downtrend — trend filter blocks new longs"
+        )
+        st.markdown("---")
         for result in results:
             st.markdown(f"### {result['symbol']}")
             hist = result['history'].dropna()
@@ -196,6 +204,7 @@ if st.button("📊 Analyze All", type="primary"):
                 ax1.fill_between(dates, 0, 100, where=strong_downtrend,
                                color='orange', alpha=0.12, label='Strong Downtrend')
             
+            ax1.legend(loc='upper left', fontsize=8)
             ax2 = ax1.twinx()
             ax2.plot(hist_plot.index, hist_plot['Close'], color='blue', linewidth=1.5)
             ax2.set_ylabel('Price', color='blue')
