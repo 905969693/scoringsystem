@@ -195,6 +195,23 @@ def analyze_single_stock(symbol, start, end, interval="1d"):
                         break
 
         latest = df.iloc[-1]
+        
+        # Calculate trend for each date in history for visualization
+        trend_directions = []
+        regimes = []
+        trend_strengths = []
+        
+        for date in df.index:
+            df_upto_date = df.loc[:date].copy()
+            trend_info_date = detect_trend(df_upto_date)
+            trend_directions.append(trend_info_date['trend_direction'])
+            regimes.append(trend_info_date['regime'])
+            trend_strengths.append(trend_info_date['trend_strength'])
+        
+        df['trend_direction'] = trend_directions
+        df['regime'] = regimes
+        df['trend_strength'] = trend_strengths
+        
         return {
             'symbol': symbol,
             'price': float(latest['Close']),
@@ -211,7 +228,7 @@ def analyze_single_stock(symbol, start, end, interval="1d"):
             'td_buy_count': td_signal['buy_count'],
             'td_sell_count': td_signal['sell_count'],
             'consecutive_days': consecutive_days,
-            'history': df[['Close', 'obos_score', 'obos_score_pct']].copy()
+            'history': df[['Close', 'obos_score', 'obos_score_pct', 'trend_direction', 'regime', 'trend_strength']].copy()
         }
     except Exception as e:
         # #region agent log
