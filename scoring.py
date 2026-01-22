@@ -6,7 +6,7 @@ import pandas as pd
 from data_fetcher import calculate_indicators, fetch_stock_data
 
 
-def calculate_obos_score(df, weights=None, use_enhanced=True):
+def calculate_obos_score(df, weights=None, use_enhanced=False):
     """
     Calculate OBOS (Overbought/Oversold) score from technical indicators.
     
